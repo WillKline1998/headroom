@@ -56,7 +56,9 @@ pub fn parse(json: &str) -> Result<Token, CredError> {
     let o = stored.oauth.ok_or(CredError::NotFound)?;
     Ok(Token {
         access_token: o.access_token,
-        expires_at: o.expires_at.and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
+        expires_at: o
+            .expires_at
+            .and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
         plan: o.subscription_type,
     })
 }
@@ -84,7 +86,12 @@ pub fn load() -> Result<Token, CredError> {
 #[cfg(target_os = "macos")]
 fn read_keychain() -> Option<String> {
     let out = Command::new("/usr/bin/security")
-        .args(["find-generic-password", "-s", "Claude Code-credentials", "-w"])
+        .args([
+            "find-generic-password",
+            "-s",
+            "Claude Code-credentials",
+            "-w",
+        ])
         .output()
         .ok()?;
     out.status
@@ -96,7 +103,11 @@ fn read_keychain() -> Option<String> {
 /// Desktop apps don't inherit the shell's PATH, so look in the usual install spots too.
 fn find_claude_cli() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
-    let exe = if cfg!(windows) { "claude.exe" } else { "claude" };
+    let exe = if cfg!(windows) {
+        "claude.exe"
+    } else {
+        "claude"
+    };
     let mut candidates: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).map(|d| d.join(exe)).collect())
         .unwrap_or_default();
@@ -113,7 +124,9 @@ fn find_claude_cli() -> Option<PathBuf> {
 /// Asks the Claude Code CLI to check its sign-in, which refreshes an expired
 /// token as a side effect. Costs no usage. Returns true if the CLI ran.
 pub fn nudge_refresh() -> bool {
-    let Some(cli) = find_claude_cli() else { return false };
+    let Some(cli) = find_claude_cli() else {
+        return false;
+    };
     let mut cmd = Command::new(cli);
     cmd.args(["auth", "status"]);
     #[cfg(windows)]
@@ -144,7 +157,11 @@ mod tests {
     #[test]
     fn expiry_has_a_minute_of_margin() {
         let now = Utc::now();
-        let t = |secs| Token { access_token: String::new(), expires_at: Some(now + chrono::Duration::seconds(secs)), plan: None };
+        let t = |secs| Token {
+            access_token: String::new(),
+            expires_at: Some(now + chrono::Duration::seconds(secs)),
+            plan: None,
+        };
         assert!(t(30).is_expired(now));
         assert!(!t(600).is_expired(now));
     }

@@ -4,6 +4,7 @@ import { compact, modelName, plural } from "../format";
 import { summarize, type Range } from "./summarize";
 
 const RANGES: Record<Range, string> = { "7": "7 days", "30": "30 days", all: "All time" };
+const shortDate = (ymd?: string) => (ymd ? new Date(`${ymd}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
 const PALETTE = ["#d97757", "#6a9bcc", "#8fae6b", "#c9a227", "#a77fc1", "#5fb3a8", "#999"];
 
 /** Which models you lean on, from Claude Code's logs on this computer. */
@@ -61,7 +62,7 @@ export function ModelsTab() {
           <h2>By day</h2>
           <div className="chart" role="img" aria-label="Replies per day by model">
             {sum.byDay.map((d) => (
-              <div key={d.date} className="chart-col" title={`${d.date}: ${d.total} replies`}>
+              <div key={d.date} className="chart-col" title={`${shortDate(d.date)}: ${d.total} replies`}>
                 {sum.models.map((m) => {
                   const n = d.perModel[m.model] ?? 0;
                   return n ? <span key={m.model} style={{ height: `${(n / sum.maxDay) * 100}%`, background: color(m.model) }} /> : null;
@@ -69,7 +70,7 @@ export function ModelsTab() {
               </div>
             ))}
           </div>
-          <div className="chart-axis"><span>{sum.byDay[0]?.date}</span><span>{sum.byDay.at(-1)?.date}</span></div>
+          <div className="chart-axis"><span>{shortDate(sum.byDay[0]?.date)}</span><span>{shortDate(sum.byDay.at(-1)?.date)}</span></div>
         </>
       )}
       {data && <p className="hint">{plural(data.filesScanned, "log file")} · {plural(data.sessions, "session")} overall{data.firstSeen ? ` · since ${new Date(data.firstSeen).toLocaleDateString()}` : ""}</p>}

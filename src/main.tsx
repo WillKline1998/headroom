@@ -5,10 +5,20 @@ import { Widget } from "./Widget";
 import { Details } from "./details/Details";
 import "./styles.css";
 
-// One bundle, two windows: the label Tauri gives each window picks its screen.
-const label = getCurrentWindow().label;
-document.documentElement.dataset.window = label;
+async function boot() {
+  // Outside the desktop app (a plain browser), fake the Rust side for previews.
+  const preview = new URLSearchParams(location.search).get("preview");
+  if (preview && !("__TAURI_INTERNALS__" in window && !("__headroomPreview" in window))) {
+    const { installPreview } = await import("./preview");
+    installPreview(preview);
+  }
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>{label === "widget" ? <Widget /> : <Details />}</React.StrictMode>,
-);
+  // One bundle, two windows: the label Tauri gives each window picks its screen.
+  const label = getCurrentWindow().label;
+  document.documentElement.dataset.window = label;
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>{label === "widget" ? <Widget /> : <Details />}</React.StrictMode>,
+  );
+}
+
+boot();

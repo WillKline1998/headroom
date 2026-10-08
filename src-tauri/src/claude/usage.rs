@@ -76,7 +76,11 @@ const HOUR: i64 = 3600;
 /// Human label + window length for each known limit kind.
 fn describe(kind: &str, scope: Option<&serde_json::Value>) -> (String, Option<i64>) {
     let scoped = scope
-        .and_then(|s| s.as_str().map(str::to_string).or_else(|| s.get("model").and_then(|m| m.as_str()).map(str::to_string)))
+        .and_then(|s| {
+            s.as_str()
+                .map(str::to_string)
+                .or_else(|| s.get("model").and_then(|m| m.as_str()).map(str::to_string))
+        })
         .map(|s| title_case(&s));
     match kind {
         "session" => ("Current session".into(), Some(5 * HOUR)),
@@ -85,16 +89,23 @@ fn describe(kind: &str, scope: Option<&serde_json::Value>) -> (String, Option<i6
             let who = scoped.unwrap_or_else(|| title_case(&k["weekly_".len()..]));
             (format!("Weekly · {who}"), Some(7 * 24 * HOUR))
         }
-        k => (scoped.map(|s| format!("{} · {s}", title_case(k))).unwrap_or_else(|| title_case(k)), None),
+        k => (
+            scoped
+                .map(|s| format!("{} · {s}", title_case(k)))
+                .unwrap_or_else(|| title_case(k)),
+            None,
+        ),
     }
 }
 
 fn title_case(s: &str) -> String {
-    s.split(|c| c == '_' || c == '-' || c == ' ')
+    s.split(['_', '-', ' '])
         .filter(|w| !w.is_empty())
         .map(|w| {
             let mut c = w.chars();
-            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            c.next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -102,7 +113,8 @@ fn title_case(s: &str) -> String {
 
 /// Turns the raw response into Headroom's provider-neutral snapshot.
 pub fn parse(json: &str, plan: Option<String>, now: DateTime<Utc>) -> Result<Snapshot, FetchError> {
-    let raw: Raw = serde_json::from_str(json).map_err(|e| FetchError::Other(format!("unexpected response: {e}")))?;
+    let raw: Raw = serde_json::from_str(json)
+        .map_err(|e| FetchError::Other(format!("unexpected response: {e}")))?;
 
     let mut limits: Vec<Limit> = raw
         .limits
@@ -131,15 +143,32 @@ pub fn parse(json: &str, plan: Option<String>, now: DateTime<Utc>) -> Result<Sna
             ("weekly_sonnet", "weekly", &raw.seven_day_sonnet),
         ];
         for (kind, group, w) in named {
-            if let Some(RawWindow { utilization: Some(p), resets_at }) = w {
+            if let Some(RawWindow {
+                utilization: Some(p),
+                resets_at,
+            }) = w
+            {
                 let (label, window_secs) = describe(kind, None);
-                limits.push(Limit { id: kind.into(), label, group: group.into(), percent: *p, resets_at: *resets_at, window_secs, severity: "normal".into(), active: false });
+                limits.push(Limit {
+                    id: kind.into(),
+                    label,
+                    group: group.into(),
+                    percent: *p,
+                    resets_at: *resets_at,
+                    window_secs,
+                    severity: "normal".into(),
+                    active: false,
+                });
             }
         }
     }
 
     // Session first, then weekly limits, then anything new.
-    let rank = |g: &str| match g { "session" => 0, "weekly" => 1, _ => 2 };
+    let rank = |g: &str| match g {
+        "session" => 0,
+        "weekly" => 1,
+        _ => 2,
+    };
     limits.sort_by_key(|l| rank(&l.group));
 
     let (breakdown, breakdown_since) = raw
@@ -148,7 +177,11 @@ pub fn parse(json: &str, plan: Option<String>, now: DateTime<Utc>) -> Result<Sna
             let rows = b
                 .rows
                 .into_iter()
-                .map(|r| Breakdown { label: r.display_name.unwrap_or_else(|| title_case(&r.key)), key: r.key, percent: r.percent })
+                .map(|r| Breakdown {
+                    label: r.display_name.unwrap_or_else(|| title_case(&r.key)),
+                    key: r.key,
+                    percent: r.percent,
+                })
                 .collect();
             (rows, b.window_started_at)
         })
@@ -173,14 +206,23 @@ pub async fn fetch(client: &reqwest::Client, token: &Token) -> Result<Snapshot, 
         .header("Accept", "application/json")
         .send()
         .await
-        .map_err(|e| FetchError::Other(if e.is_connect() || e.is_timeout() { "Can't reach Anthropic (offline?)".into() } else { e.to_string() }))?;
+        .map_err(|e| {
+            FetchError::Other(if e.is_connect() || e.is_timeout() {
+                "Can't reach Anthropic (offline?)".into()
+            } else {
+                e.to_string()
+            })
+        })?;
     match res.status().as_u16() {
         200 => {}
         401 | 403 => return Err(FetchError::Unauthorized),
         429 => return Err(FetchError::RateLimited),
         s => return Err(FetchError::Other(format!("Anthropic returned HTTP {s}"))),
     }
-    let body = res.text().await.map_err(|e| FetchError::Other(e.to_string()))?;
+    let body = res
+        .text()
+        .await
+        .map_err(|e| FetchError::Other(e.to_string()))?;
     parse(&body, token.plan.clone(), Utc::now())
 }
 
@@ -209,7 +251,11 @@ mod tests {
     fn falls_back_to_named_windows() {
         let json = r#"{"five_hour":{"utilization":42.0,"resets_at":"2026-10-08T21:49:59Z"},"seven_day":{"utilization":7.5,"resets_at":null},"seven_day_opus":null}"#;
         let s = parse(json, None, Utc::now()).unwrap();
-        let got: Vec<_> = s.limits.iter().map(|l| (l.id.as_str(), l.percent)).collect();
+        let got: Vec<_> = s
+            .limits
+            .iter()
+            .map(|l| (l.id.as_str(), l.percent))
+            .collect();
         assert_eq!(got, vec![("session", 42.0), ("weekly_all", 7.5)]);
     }
 
@@ -221,7 +267,10 @@ mod tests {
             {"kind":"session","group":"session","percent":10,"resets_at":null}]}"#;
         let s = parse(json, None, Utc::now()).unwrap();
         let labels: Vec<_> = s.limits.iter().map(|l| l.label.as_str()).collect();
-        assert_eq!(labels, vec!["Current session", "Weekly · Opus", "Mystery Meter"]);
+        assert_eq!(
+            labels,
+            vec!["Current session", "Weekly · Opus", "Mystery Meter"]
+        );
     }
 
     #[test]

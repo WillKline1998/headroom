@@ -75,11 +75,15 @@ pub fn log_dirs() -> Vec<PathBuf> {
         dirs.push(h.join(".config/claude/projects"));
     }
     let mut seen = HashSet::new();
-    dirs.into_iter().filter(|d| d.is_dir() && seen.insert(d.clone())).collect()
+    dirs.into_iter()
+        .filter(|d| d.is_dir() && seen.insert(d.clone()))
+        .collect()
 }
 
 fn jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -100,13 +104,19 @@ struct Acc {
 
 impl Acc {
     fn add_line(&mut self, raw: &str) {
-        let Ok(line) = serde_json::from_str::<Line>(raw) else { return };
+        let Ok(line) = serde_json::from_str::<Line>(raw) else {
+            return;
+        };
         if line.kind.as_deref() != Some("assistant") {
             return;
         }
-        let (Some(msg), Some(ts)) = (line.message, line.timestamp) else { return };
-        let Some(model) = msg.model.filter(|m| !m.starts_with('<')) else { return }; // skip "<synthetic>"
-        // Claude Code writes one line per content block of the same reply: count it once.
+        let (Some(msg), Some(ts)) = (line.message, line.timestamp) else {
+            return;
+        };
+        let Some(model) = msg.model.filter(|m| !m.starts_with('<')) else {
+            return;
+        }; // skip "<synthetic>"
+           // Claude Code writes one line per content block of the same reply: count it once.
         if let Some(id) = &msg.id {
             let key = format!("{id}:{}", line.request_id.as_deref().unwrap_or(""));
             if !self.seen.insert(key) {
@@ -119,15 +129,18 @@ impl Acc {
         self.first = Some(self.first.map_or(ts, |f| f.min(ts)));
         let date = ts.with_timezone(&Local).date_naive();
         let u = msg.usage.unwrap_or_default();
-        let row = self.rows.entry((date, model.clone())).or_insert_with(|| DayModel {
-            date,
-            model,
-            replies: 0,
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_read_tokens: 0,
-            cache_write_tokens: 0,
-        });
+        let row = self
+            .rows
+            .entry((date, model.clone()))
+            .or_insert_with(|| DayModel {
+                date,
+                model,
+                replies: 0,
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+            });
         row.replies += 1;
         row.input_tokens += u.input_tokens;
         row.output_tokens += u.output_tokens;
@@ -138,7 +151,13 @@ impl Acc {
     fn finish(self, files: usize, sources: Vec<String>) -> Analytics {
         let mut days: Vec<DayModel> = self.rows.into_values().collect();
         days.sort_by(|a, b| a.date.cmp(&b.date).then(a.model.cmp(&b.model)));
-        Analytics { days, sessions: self.sessions.len(), files_scanned: files, first_seen: self.first, sources }
+        Analytics {
+            days,
+            sessions: self.sessions.len(),
+            files_scanned: files,
+            first_seen: self.first,
+            sources,
+        }
     }
 }
 
@@ -149,12 +168,17 @@ pub fn scan_dirs(dirs: &[PathBuf]) -> Analytics {
     }
     let mut acc = Acc::default();
     for f in &files {
-        let Ok(file) = std::fs::File::open(f) else { continue };
+        let Ok(file) = std::fs::File::open(f) else {
+            continue;
+        };
         for line in BufReader::new(file).lines().map_while(Result::ok) {
             acc.add_line(&line);
         }
     }
-    acc.finish(files.len(), dirs.iter().map(|d| d.display().to_string()).collect())
+    acc.finish(
+        files.len(),
+        dirs.iter().map(|d| d.display().to_string()).collect(),
+    )
 }
 
 pub fn scan() -> Analytics {
@@ -170,28 +194,45 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("headroom-test-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("proj/sub")).unwrap();
         let reply = |id: &str, model: &str, ts: &str, out: u64| {
-            format!(r#"{{"type":"assistant","timestamp":"{ts}","sessionId":"s1","requestId":"r-{id}","message":{{"id":"{id}","model":"{model}","usage":{{"input_tokens":10,"output_tokens":{out},"cache_read_input_tokens":100,"cache_creation_input_tokens":5}}}}}}"#)
+            format!(
+                r#"{{"type":"assistant","timestamp":"{ts}","sessionId":"s1","requestId":"r-{id}","message":{{"id":"{id}","model":"{model}","usage":{{"input_tokens":10,"output_tokens":{out},"cache_read_input_tokens":100,"cache_creation_input_tokens":5}}}}}}"#
+            )
         };
         let lines = [
             reply("m1", "claude-opus-5-5", "2026-10-07T15:00:00Z", 50),
             reply("m1", "claude-opus-5-5", "2026-10-07T15:00:00Z", 50), // same reply, 2nd content block
             reply("m2", "claude-sonnet-5-5", "2026-10-07T16:00:00Z", 20),
             reply("m3", "<synthetic>", "2026-10-07T16:00:00Z", 0),
-            r#"{"type":"user","timestamp":"2026-10-07T15:00:00Z","message":{"role":"user"}}"#.to_string(),
+            r#"{"type":"user","timestamp":"2026-10-07T15:00:00Z","message":{"role":"user"}}"#
+                .to_string(),
             "not json".to_string(),
         ];
         std::fs::write(dir.join("proj/a.jsonl"), lines.join("\n")).unwrap();
-        std::fs::write(dir.join("proj/sub/agent.jsonl"), reply("m4", "claude-opus-5-5", "2026-10-07T17:00:00Z", 5)).unwrap();
+        std::fs::write(
+            dir.join("proj/sub/agent.jsonl"),
+            reply("m4", "claude-opus-5-5", "2026-10-07T17:00:00Z", 5),
+        )
+        .unwrap();
 
         let a = scan_dirs(&[dir.clone()]);
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert_eq!(a.files_scanned, 2);
         assert_eq!(a.sessions, 1);
-        let opus: Vec<_> = a.days.iter().filter(|d| d.model == "claude-opus-5-5").collect();
+        let opus: Vec<_> = a
+            .days
+            .iter()
+            .filter(|d| d.model == "claude-opus-5-5")
+            .collect();
         assert_eq!(opus.iter().map(|d| d.replies).sum::<u64>(), 2);
         assert_eq!(opus.iter().map(|d| d.output_tokens).sum::<u64>(), 55);
-        assert_eq!(a.days.iter().filter(|d| d.model == "claude-sonnet-5-5").count(), 1);
+        assert_eq!(
+            a.days
+                .iter()
+                .filter(|d| d.model == "claude-sonnet-5-5")
+                .count(),
+            1
+        );
         assert!(a.days.iter().all(|d| !d.model.starts_with('<')));
     }
 }
