@@ -3,6 +3,7 @@
 pub mod analytics;
 mod claude;
 mod hermes;
+mod history;
 mod model;
 mod poller;
 pub mod pricing;
@@ -37,6 +38,14 @@ async fn get_analytics(state: tauri::State<'_, AppState>) -> Result<analytics::A
 #[tauri::command]
 fn hermes_detected() -> bool {
     !hermes::databases().is_empty()
+}
+
+/// Recorded readings, oldest first, for the "how this window filled" charts.
+#[tauri::command]
+fn get_history(app: AppHandle) -> Vec<history::Point> {
+    history::path(&app)
+        .map(|p| history::load(&p))
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -197,6 +206,7 @@ pub fn run() {
             refresh_now,
             get_analytics,
             hermes_detected,
+            get_history,
             get_settings,
             save_settings,
             open_details

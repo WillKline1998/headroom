@@ -215,6 +215,7 @@ pub async fn refresh(app: &AppHandle) {
     if let Some(s) = &next.snapshot {
         if next.status == "ok" {
             alert_thresholds(app, &state, s, &settings);
+            crate::history::record(app, s);
         }
     }
     update_tray(app, &next, &settings);
