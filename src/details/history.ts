@@ -65,12 +65,12 @@ export function chartPaths(points: ChartPoint[], w: number, h: number): { line: 
 
 const round = (n: number) => Math.round(n * 10) / 10;
 
-/** Axis labels at window start and reset: weekdays for multi-day windows, clock times otherwise. */
+/** Axis labels at window start and reset: dates for multi-day windows (a week starts and ends on the same weekday), clock times otherwise. */
 export function axisLabels(resetsAt: Date, windowSecs: number): { start: string; end: string } {
   const start = new Date(resetsAt.getTime() - windowSecs * 1000);
   const fmt = (d: Date) =>
     windowSecs * 1000 >= 2 * DAY_MS
-      ? d.toLocaleDateString(undefined, { weekday: "short" })
+      ? d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
       : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return { start: fmt(start), end: fmt(resetsAt) };
 }

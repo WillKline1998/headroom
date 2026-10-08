@@ -81,9 +81,9 @@ describe("axisLabels", () => {
     expect(end).toMatch(/5:49/);
   });
 
-  it("uses weekdays for the weekly window", () => {
+  it("uses dates for the weekly window, since both ends share a weekday", () => {
     const { start, end } = axisLabels(new Date(2026, 9, 12, 9, 0), 7 * 86400); // Mon Oct 12 2026
-    expect(end).toBe("Mon");
-    expect(start).toBe("Mon");
+    expect(end).toBe("Mon, Oct 12");
+    expect(start).toBe("Mon, Oct 5");
   });
 });

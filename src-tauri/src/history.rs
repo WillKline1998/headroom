@@ -200,6 +200,7 @@ mod tests {
             breakdown_since: None,
             extra_usage: false,
             fetched_at: at(9, 0),
+            via: "claude_code".into(),
         }
     }
 
