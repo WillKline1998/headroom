@@ -284,7 +284,7 @@ mod tests {
         )
         .unwrap();
 
-        let a = scan_dirs(&[dir.clone()]);
+        let a = scan_dirs(std::slice::from_ref(&dir));
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert_eq!(a.files_scanned, 2);
