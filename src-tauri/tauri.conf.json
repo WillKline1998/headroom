@@ -44,6 +44,10 @@
     ],
     "shortDescription": "Your Claude plan limits, always in view",
     "category": "Utility",
-    "copyright": "\u00a9 2026 Will Kline"
+    "copyright": "\u00a9 2026 Will Kline",
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "11.0"
+    }
   }
 }
