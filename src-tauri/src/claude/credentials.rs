@@ -14,6 +14,7 @@ pub struct Token {
     pub access_token: String,
     pub expires_at: Option<DateTime<Utc>>,
     pub plan: Option<String>,
+    pub tier: Option<String>,
 }
 
 impl Token {
@@ -47,6 +48,8 @@ struct StoredOauth {
     expires_at: Option<i64>,
     #[serde(rename = "subscriptionType")]
     subscription_type: Option<String>,
+    #[serde(rename = "rateLimitTier")]
+    rate_limit_tier: Option<String>,
 }
 
 /// Parses the JSON blob Claude Code stores (same shape in the keychain and on disk).
@@ -60,6 +63,7 @@ pub fn parse(json: &str) -> Result<Token, CredError> {
             .expires_at
             .and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
         plan: o.subscription_type,
+        tier: o.rate_limit_tier,
     })
 }
 
@@ -121,20 +125,40 @@ fn find_claude_cli() -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
-/// Asks the Claude Code CLI to check its sign-in, which refreshes an expired
-/// token as a side effect. Costs no usage. Returns true if the CLI ran.
-pub fn nudge_refresh() -> bool {
-    let Some(cli) = find_claude_cli() else {
-        return false;
-    };
-    let mut cmd = Command::new(cli);
-    cmd.args(["auth", "status"]);
+/// How Claude Code on this computer is signed in, from `claude auth status --json`.
+#[derive(Debug, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AuthStatus {
+    pub logged_in: bool,
+    /// "claude.ai" (subscription, including SSO) or an API-key / console method
+    pub auth_method: String,
+    /// "firstParty", or a cloud provider such as Bedrock / Vertex
+    pub api_provider: String,
+}
+
+pub fn auth_status() -> Option<AuthStatus> {
+    let out = claude_command(&["auth", "status", "--json"])?;
+    serde_json::from_slice(&out).ok()
+}
+
+fn claude_command(args: &[&str]) -> Option<Vec<u8>> {
+    let mut cmd = Command::new(find_claude_cli()?);
+    cmd.args(args);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash
     }
-    cmd.output().map(|o| o.status.success()).unwrap_or(false)
+    cmd.output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| o.stdout)
+}
+
+/// Asks the Claude Code CLI to check its sign-in, which refreshes an expired
+/// token as a side effect. Costs no usage. Returns true if the CLI ran.
+pub fn nudge_refresh() -> bool {
+    claude_command(&["auth", "status"]).is_some()
 }
 
 #[cfg(test)]
@@ -150,6 +174,22 @@ mod tests {
     }
 
     #[test]
+    fn reads_auth_status_json() {
+        let s: AuthStatus = serde_json::from_str(
+            r#"{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"x"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            s,
+            AuthStatus {
+                logged_in: true,
+                auth_method: "claude.ai".into(),
+                api_provider: "firstParty".into()
+            }
+        );
+    }
+
+    #[test]
     fn missing_oauth_is_not_found() {
         assert!(matches!(parse(r#"{"other":1}"#), Err(CredError::NotFound)));
     }
@@ -161,6 +201,7 @@ mod tests {
             access_token: String::new(),
             expires_at: Some(now + chrono::Duration::seconds(secs)),
             plan: None,
+            tier: None,
         };
         assert!(t(30).is_expired(now));
         assert!(!t(600).is_expired(now));

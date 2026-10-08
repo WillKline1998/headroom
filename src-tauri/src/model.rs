@@ -20,6 +20,10 @@ pub struct Limit {
     pub severity: String,
     /// The limit currently constraining the account.
     pub active: bool,
+    /// Extra line under the bar, e.g. "$12.40 of $100.00" for spend limits.
+    pub detail: Option<String>,
+    /// False when there's no ceiling (spend with no limit): show the amount, not a bar.
+    pub capped: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -35,6 +39,8 @@ pub struct Breakdown {
 pub struct Snapshot {
     pub provider: String,
     pub plan: Option<String>,
+    /// e.g. "default_claude_max_20x": tells Max 5x from Max 20x.
+    pub tier: Option<String>,
     pub limits: Vec<Limit>,
     /// Where this week's usage went (Claude Code, chat, Cowork, …).
     pub breakdown: Vec<Breakdown>,
@@ -48,7 +54,7 @@ pub struct Snapshot {
 #[serde(rename_all = "camelCase")]
 pub struct UsageState {
     pub snapshot: Option<Snapshot>,
-    /// "loading" | "ok" | "signed_out" | "error"
+    /// "loading" | "ok" | "signed_out" | "no_plan" (API key / cloud provider) | "error"
     pub status: String,
     pub message: Option<String>,
     pub checked_at: Option<DateTime<Utc>>,

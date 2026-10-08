@@ -1,5 +1,6 @@
 import { api } from "../api";
 import { LimitBar } from "../components/LimitBar";
+import { Message } from "../components/Message";
 import { ago } from "../format";
 import { useNow, useUsage } from "../hooks";
 
@@ -12,8 +13,12 @@ export function LimitsTab() {
     return (
       <section>
         <h1>Limits</h1>
-        <p className="muted">{state.message ?? "Checking your usage…"}</p>
-        <button className="btn" onClick={() => api.refresh()}>Try again</button>
+        <p className="muted">{state.message ? <Message text={state.message} /> : "Checking your usage…"}</p>
+        {state.status === "no_plan" ? (
+          <button className="btn" onClick={() => (window.location.hash = "details/models")}>See model stats</button>
+        ) : (
+          <button className="btn" onClick={() => api.refresh()}>Try again</button>
+        )}
       </section>
     );
   }

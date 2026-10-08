@@ -11,6 +11,10 @@ export type Limit = {
   windowSecs: number | null;
   severity: string;
   active: boolean;
+  /** Extra line, e.g. "$12.40 of $100.00" for spend limits. */
+  detail: string | null;
+  /** False = no ceiling: show the amount, not a bar. */
+  capped: boolean;
 };
 
 export type Breakdown = { key: string; label: string; percent: number };
@@ -18,6 +22,7 @@ export type Breakdown = { key: string; label: string; percent: number };
 export type Snapshot = {
   provider: string;
   plan: string | null;
+  tier: string | null;
   limits: Limit[];
   breakdown: Breakdown[];
   breakdownSince: string | null;
@@ -27,7 +32,7 @@ export type Snapshot = {
 
 export type UsageState = {
   snapshot: Snapshot | null;
-  status: "loading" | "ok" | "signed_out" | "error";
+  status: "loading" | "ok" | "signed_out" | "no_plan" | "error";
   message: string | null;
   checkedAt: string | null;
 };
@@ -40,9 +45,15 @@ export type DayModel = {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** USD at API list prices. */
+  apiValue: number;
+  unpricedReplies: number;
 };
 
-export type Analytics = { days: DayModel[]; sessions: number; filesScanned: number; firstSeen: string | null; sources: string[] };
+/** Replies in one local hour; weekday 0 = Monday. */
+export type HourCount = { date: string; weekday: number; hour: number; replies: number };
+
+export type Analytics = { days: DayModel[]; hours: HourCount[]; pricesAsOf: string; sessions: number; filesScanned: number; firstSeen: string | null; sources: string[] };
 
 export type Settings = {
   refreshSecs: number;

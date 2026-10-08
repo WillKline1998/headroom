@@ -65,6 +65,30 @@ export function compact(n: number): string {
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
+/** "$0.42", "$38", "$1,240" */
+export function usd(n: number): string {
+  const digits = n >= 100 || Number.isInteger(n) ? 0 : 2;
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/** Monthly list price of personal Claude plans, for the "API value" comparison. */
+export function planPrice(plan: string | null, tier: string | null): { name: string; monthly: number } | null {
+  switch (plan) {
+    case "pro":
+      return { name: "Pro", monthly: 20 };
+    case "max":
+      return tier?.includes("20x") ? { name: "Max 20x", monthly: 200 } : { name: "Max 5x", monthly: 100 };
+    default:
+      return null; // Team / Enterprise pricing varies by contract
+  }
+}
+
+/** "10 PM", "12 AM" */
+export function hourLabel(h: number): string {
+  const suffix = h < 12 ? "AM" : "PM";
+  return `${h % 12 === 0 ? 12 : h % 12} ${suffix}`;
+}
+
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }

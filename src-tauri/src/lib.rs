@@ -1,9 +1,10 @@
 //! Headroom: a tiny always-visible widget for your Claude plan limits.
 
-mod analytics;
+pub mod analytics;
 mod claude;
 mod model;
 mod poller;
+pub mod pricing;
 mod settings;
 
 use poller::AppState;

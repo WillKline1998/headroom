@@ -4,7 +4,8 @@
 //! Nothing leaves the computer. Claude chats on claude.ai/desktop aren't in
 //! these logs; the usage endpoint's weekly breakdown covers that split instead.
 
-use chrono::{DateTime, Local, NaiveDate, Utc};
+use crate::pricing::{self, Tokens};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
@@ -21,12 +22,29 @@ pub struct DayModel {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    /// What these replies would have cost at API list prices (USD).
+    pub api_value: f64,
+    /// Replies from models with no known price (left out of `api_value`).
+    pub unpriced_replies: u64,
+}
+
+/// Replies per local (date, hour), for the "busiest hours" heatmap.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HourCount {
+    pub date: NaiveDate,
+    /// 0 = Monday … 6 = Sunday
+    pub weekday: u32,
+    pub hour: u32,
+    pub replies: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Analytics {
     pub days: Vec<DayModel>,
+    pub hours: Vec<HourCount>,
+    pub prices_as_of: String,
     pub sessions: usize,
     pub files_scanned: usize,
     pub first_seen: Option<DateTime<Utc>>,
@@ -62,6 +80,34 @@ struct Usage {
     cache_read_input_tokens: u64,
     #[serde(default)]
     cache_creation_input_tokens: u64,
+    cache_creation: Option<CacheCreation>,
+}
+
+/// Newer logs split cache writes by lifetime; 1-hour writes cost more.
+#[derive(Deserialize, Default)]
+struct CacheCreation {
+    #[serde(default)]
+    ephemeral_5m_input_tokens: u64,
+    #[serde(default)]
+    ephemeral_1h_input_tokens: u64,
+}
+
+impl Usage {
+    fn tokens(&self) -> Tokens {
+        let (w5, w1h) = match &self.cache_creation {
+            Some(c) if c.ephemeral_5m_input_tokens + c.ephemeral_1h_input_tokens > 0 => {
+                (c.ephemeral_5m_input_tokens, c.ephemeral_1h_input_tokens)
+            }
+            _ => (self.cache_creation_input_tokens, 0), // older logs: assume the default 5-minute cache
+        };
+        Tokens {
+            input: self.input_tokens,
+            output: self.output_tokens,
+            cache_read: self.cache_read_input_tokens,
+            cache_write_5m: w5,
+            cache_write_1h: w1h,
+        }
+    }
 }
 
 /// Where Claude Code keeps logs (newer versions use ~/.config/claude).
@@ -97,6 +143,7 @@ fn jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) {
 #[derive(Default)]
 struct Acc {
     rows: HashMap<(NaiveDate, String), DayModel>,
+    hours: HashMap<(NaiveDate, u32), u64>,
     seen: HashSet<String>,
     sessions: HashSet<String>,
     first: Option<DateTime<Utc>>,
@@ -127,8 +174,11 @@ impl Acc {
             self.sessions.insert(s);
         }
         self.first = Some(self.first.map_or(ts, |f| f.min(ts)));
-        let date = ts.with_timezone(&Local).date_naive();
+        let local = ts.with_timezone(&Local);
+        let date = local.date_naive();
+        *self.hours.entry((date, local.hour())).or_default() += 1;
         let u = msg.usage.unwrap_or_default();
+        let value = pricing::cost(&model, u.tokens());
         let row = self
             .rows
             .entry((date, model.clone()))
@@ -140,19 +190,39 @@ impl Acc {
                 output_tokens: 0,
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
+                api_value: 0.0,
+                unpriced_replies: 0,
             });
+        match value {
+            Some(v) => row.api_value += v,
+            None => row.unpriced_replies += 1,
+        }
         row.replies += 1;
         row.input_tokens += u.input_tokens;
         row.output_tokens += u.output_tokens;
         row.cache_read_tokens += u.cache_read_input_tokens;
-        row.cache_write_tokens += u.cache_creation_input_tokens;
+        let t = u.tokens();
+        row.cache_write_tokens += t.cache_write_5m + t.cache_write_1h;
     }
 
     fn finish(self, files: usize, sources: Vec<String>) -> Analytics {
         let mut days: Vec<DayModel> = self.rows.into_values().collect();
         days.sort_by(|a, b| a.date.cmp(&b.date).then(a.model.cmp(&b.model)));
+        let mut hours: Vec<HourCount> = self
+            .hours
+            .into_iter()
+            .map(|((date, hour), replies)| HourCount {
+                date,
+                weekday: date.weekday().num_days_from_monday(),
+                hour,
+                replies,
+            })
+            .collect();
+        hours.sort_by_key(|h| (h.date, h.hour));
         Analytics {
             days,
+            hours,
+            prices_as_of: pricing::PRICES_AS_OF.to_string(),
             sessions: self.sessions.len(),
             files_scanned: files,
             first_seen: self.first,
@@ -234,5 +304,10 @@ mod tests {
             1
         );
         assert!(a.days.iter().all(|d| !d.model.starts_with('<')));
+        // m1 + m4 on Opus 5.5: 2×(10 in, 100 cache read, 5 cache write) + 55 out
+        let expected = (20.0 * 4.0 + 55.0 * 20.0 + 200.0 * 0.20 + 10.0 * 5.0) / 1e6;
+        assert!((opus.iter().map(|d| d.api_value).sum::<f64>() - expected).abs() < 1e-12);
+        assert_eq!(a.hours.iter().map(|h| h.replies).sum::<u64>(), 3);
+        assert!(a.hours.iter().all(|h| h.weekday < 7 && h.hour < 24));
     }
 }

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { summarize } from "./summarize";
-import type { DayModel } from "../api";
+import { heatmap, monthlyPace, summarize } from "./summarize";
+import type { DayModel, HourCount } from "../api";
 
 const row = (date: string, model: string, replies: number, outputTokens = 0): DayModel => ({
-  date, model, replies, outputTokens, inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0,
+  date, model, replies, outputTokens, inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, apiValue: replies * 0.5, unpricedReplies: 0,
 });
 
 describe("summarize", () => {
@@ -43,5 +43,35 @@ describe("summarize", () => {
     expect(s.replies).toBe(0);
     expect(s.models).toEqual([]);
     expect(s.byDay).toHaveLength(30);
+  });
+});
+
+describe("API value", () => {
+  const now = new Date(2026, 9, 8, 15, 0);
+  it("sums value per model and overall, and paces it to a month", () => {
+    const s = summarize([row("2026-10-07", "claude-opus-5-5", 40), row("2026-10-08", "claude-sonnet-5-5", 20)], "7", now);
+    expect(s.apiValue).toBeCloseTo(30);
+    expect(s.models[0].apiValue).toBeCloseTo(20);
+    expect(s.spanDays).toBe(7);
+    expect(monthlyPace(s.apiValue, s.spanDays)).toBeCloseTo(30 / 7 * 30);
+    expect(monthlyPace(5, 0)).toBe(0);
+  });
+});
+
+describe("heatmap", () => {
+  const now = new Date(2026, 9, 8, 15, 0);
+  const h = (date: string, weekday: number, hour: number, replies: number): HourCount => ({ date, weekday, hour, replies });
+  it("buckets replies by weekday and hour within the range", () => {
+    const m = heatmap([h("2026-10-07", 2, 22, 30), h("2026-10-06", 1, 22, 10), h("2026-10-06", 1, 9, 15), h("2026-08-01", 5, 3, 999)], "7", now);
+    expect(m.grid[2][22]).toBe(30);
+    expect(m.total).toBe(55);
+    expect(m.max).toBe(30);
+    expect(m.busiestHour).toBe(22);
+    expect(m.busiestDay).toBe("Wed");
+  });
+  it("is empty without data", () => {
+    const m = heatmap([], "30", now);
+    expect(m.total).toBe(0);
+    expect(m.busiestHour).toBeNull();
   });
 });

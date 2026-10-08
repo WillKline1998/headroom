@@ -10,7 +10,9 @@
 - **Menu bar / tray readout** (`7% · 30%`) and **alerts** when a limit crosses thresholds you choose (80% and 95% by default).
 - **Details window**:
   - *Limits*: big bars, plus **where this week went** (Claude Code vs. chats vs. Cowork), straight from Anthropic.
-  - *Models*: which models you actually use, from Claude Code's local logs: replies and tokens per model, a per-day chart, 7 days / 30 days / all time.
+  - *Models*: which models you actually use, from Claude Code's local logs. Shows replies and tokens per model, a per-day chart, and 7 days / 30 days / all time.
+  - **API value**: what that usage would have cost at Anthropic's pay-as-you-go prices. Each reply is priced individually, including cache reads/writes and long-prompt tiers. It's compared with your plan's monthly price.
+  - **Busiest hours**: a weekday × hour heatmap of when you work with Claude.
 - Small (~10 MB), runs on **macOS, Windows and Linux**, light and dark mode.
 
 ## How it works
@@ -21,7 +23,13 @@ Headroom borrows the sign-in that **Claude Code** already saved on your computer
 - Claude Code refreshes its token whenever it runs. If the token has expired, Headroom asks the `claude` CLI to check its sign-in (`claude auth status`), which costs no usage. Headroom never writes credentials itself.
 - Model analytics read `~/.claude/projects/**/*.jsonl` locally. Each assistant reply is counted once, with sub-agent transcripts included.
 
-**Requirement:** Claude Code installed and signed in with a Claude subscription (Pro or Max) on the same computer.
+**Requirement:** Claude Code installed and signed in on the same computer.
+
+| Claude Code is signed in with… | Headroom shows |
+| --- | --- |
+| A Claude plan: Pro, Max, Team, or seat-based Enterprise (including **company SSO**, `claude auth login --sso`) | 5-hour + weekly bars, any per-model caps, usage credits |
+| A usage-based Enterprise seat | Monthly spend against your limit ("$12.40 of $100.00") |
+| An API key, Bedrock, or Vertex | No plan limits exist; Headroom says so, and the Models tab still works |
 
 ## Install
 
@@ -40,7 +48,10 @@ npm run tauri dev      # run with hot reload
 npm run tauri build    # produce an installer in src-tauri/target/release/bundle
 ```
 
-Tests: `npm test` (formatting and analytics logic) and `cd src-tauri && cargo test` (sign-in parsing, usage parsing against a real response, log scanning, settings).
+Tests: `npm test` (formatting, analytics, heatmap) and `cd src-tauri && cargo test` (sign-in parsing, usage parsing against a real response, spend / Enterprise shapes, pricing, log scanning, settings).
+
+Try the UI in a browser with sample data: `npx vite`, then open `http://localhost:1420/?preview=widget` (add `&account=enterprise` or `&account=apikey`), or `?preview=details#details/models`.
+`cd src-tauri && cargo run --example scan` prints what the Models tab would show from your real logs.
 
 ## Project layout
 
@@ -50,7 +61,8 @@ src-tauri/src/
   claude/usage.rs         call the usage endpoint, parse it into provider-neutral limits
   model.rs                Limit / Snapshot types shared with the UI
   poller.rs               background refresh loop, menu-bar text, threshold alerts
-  analytics.rs            per-day, per-model stats from Claude Code's local logs
+  analytics.rs            per-day, per-model and per-hour stats from Claude Code's local logs
+  pricing.rs              API list prices (for "API value"), dated and unit-tested
   settings.rs             preferences (JSON in the OS config folder)
   lib.rs                  windows, tray menu, commands
 src/

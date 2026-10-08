@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { api } from "./api";
 import { LimitBar } from "./components/LimitBar";
+import { Message } from "./components/Message";
 import { ago } from "./format";
 import { useNow, useUsage } from "./hooks";
 
@@ -50,8 +51,15 @@ export function Widget() {
 
       {state.status === "signed_out" && (
         <div className="widget-note">
-          <p>{state.message}</p>
+          <p>{state.message && <Message text={state.message} />}</p>
           <button className="btn" onClick={() => api.refresh()}>Try again</button>
+        </div>
+      )}
+
+      {state.status === "no_plan" && (
+        <div className="widget-note">
+          <p>{state.message && <Message text={state.message} />}</p>
+          <button className="btn" onClick={() => api.openDetails("models")}>See model stats</button>
         </div>
       )}
 

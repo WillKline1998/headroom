@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, compact, countdown, elapsed, level, modelName, resetClock } from "./format";
+import { ago, compact, countdown, elapsed, hourLabel, level, modelName, planPrice, resetClock, usd } from "./format";
 
 describe("countdown", () => {
   it("formats days, hours and minutes", () => {
@@ -69,5 +69,25 @@ describe("compact", () => {
     expect(compact(950)).toBe("950");
     expect(compact(1234)).toBe("1.2K");
     expect(compact(3_400_000)).toBe("3.4M");
+  });
+});
+
+describe("usd / planPrice / hourLabel", () => {
+  it("formats money for the API value card", () => {
+    expect(usd(0.4231)).toBe("$0.42");
+    expect(usd(38.5)).toBe("$38.50");
+    expect(usd(1240.2)).toBe("$1,240");
+    expect(usd(20)).toBe("$20");
+  });
+  it("knows personal plan prices, not contract ones", () => {
+    expect(planPrice("pro", "default_claude_ai")).toEqual({ name: "Pro", monthly: 20 });
+    expect(planPrice("max", "default_claude_max_20x")?.monthly).toBe(200);
+    expect(planPrice("max", "default_claude_max_5x")?.monthly).toBe(100);
+    expect(planPrice("enterprise", null)).toBeNull();
+  });
+  it("labels hours on a 12-hour clock", () => {
+    expect(hourLabel(0)).toBe("12 AM");
+    expect(hourLabel(13)).toBe("1 PM");
+    expect(hourLabel(12)).toBe("12 PM");
   });
 });

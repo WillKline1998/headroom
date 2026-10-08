@@ -13,6 +13,12 @@ with sync_playwright() as p:
         pg.wait_for_timeout(1500)
         pg.locator(".widget").screenshot(path=f"{OUT}/widget_{scheme}.png")
         print(scheme, "errors:", errs[:3])
+    for account in ("enterprise", "apikey"):
+        ctx = b.new_context(viewport={"width": 340, "height": 300}, device_scale_factor=2)
+        pg = ctx.new_page()
+        pg.goto(f"http://localhost:1420/?preview=widget&account={account}")
+        pg.wait_for_timeout(1500)
+        pg.locator(".widget").screenshot(path=f"{OUT}/widget_{account}.png")
     for scheme in ("light", "dark"):
         ctx = b.new_context(viewport={"width": 760, "height": 640}, device_scale_factor=2, color_scheme=scheme)
         for tab in ("limits", "models", "settings"):

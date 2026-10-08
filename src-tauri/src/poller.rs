@@ -21,37 +21,58 @@ pub struct AppState {
     pub client: reqwest::Client,
 }
 
-const SIGNED_OUT: &str = "Sign in to Claude Code on this computer (run `claude` once), and Headroom will connect automatically.";
+const SIGNED_OUT: &str = "Sign in to Claude Code on this computer with your Claude account: run `claude auth login` (add `--sso` for company single sign-on). Headroom connects automatically.";
+
+/// Why there's no Claude sign-in to borrow: `(status, message)`.
+/// API-key and cloud-provider setups are fine, they just have no plan limits.
+pub fn explain_missing(auth: Option<credentials::AuthStatus>) -> (&'static str, String) {
+    let Some(a) = auth else {
+        return ("signed_out", SIGNED_OUT.into());
+    };
+    if a.logged_in && !a.api_provider.is_empty() && a.api_provider != "firstParty" {
+        return (
+            "no_plan",
+            format!("Claude Code here runs through {}, so there are no Claude plan limits to show. The Models tab still works.", a.api_provider),
+        );
+    }
+    if a.logged_in && a.auth_method != "claude.ai" {
+        return (
+            "no_plan",
+            "Claude Code is signed in with an API key, which is billed per use and has no plan limits. The Models tab still works. To track a Claude plan instead, run `claude auth login` (add `--sso` for company sign-in).".into(),
+        );
+    }
+    ("signed_out", SIGNED_OUT.into())
+}
 const EXPIRED: &str =
     "Your Claude sign-in expired. Open Claude Code once and Headroom will reconnect.";
 
-async fn load_token(force_refresh: bool) -> Result<credentials::Token, String> {
+async fn load_token(force_refresh: bool) -> Result<credentials::Token, (&'static str, String)> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut token = credentials::load().map_err(|e| match e {
-            credentials::CredError::NotFound => SIGNED_OUT.to_string(),
-            e => e.to_string(),
+            credentials::CredError::NotFound => explain_missing(credentials::auth_status()),
+            e => ("signed_out", e.to_string()),
         })?;
         if force_refresh || token.is_expired(Utc::now()) {
             // Let Claude Code refresh its own token, then read it again.
             if credentials::nudge_refresh() {
-                token = credentials::load().map_err(|e| e.to_string())?;
+                token = credentials::load().map_err(|e| ("signed_out", e.to_string()))?;
             }
             if token.is_expired(Utc::now()) {
-                return Err(EXPIRED.to_string());
+                return Err(("signed_out", EXPIRED.to_string()));
             }
         }
         Ok(token)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| ("error", e.to_string()))?
 }
 
 async fn check(state: &AppState) -> UsageState {
     let previous = state.usage.lock().unwrap().snapshot.clone();
     let now = Some(Utc::now());
-    let signed_out = |msg: String| UsageState {
+    let signed_out = |(status, msg): (&str, String)| UsageState {
         snapshot: None,
-        status: "signed_out".into(),
+        status: status.into(),
         message: Some(msg),
         checked_at: now,
     };
@@ -81,7 +102,7 @@ async fn check(state: &AppState) -> UsageState {
             message: None,
             checked_at: now,
         },
-        Err(usage::FetchError::Unauthorized) => signed_out(EXPIRED.into()),
+        Err(usage::FetchError::Unauthorized) => signed_out(("signed_out", EXPIRED.into())),
         Err(usage::FetchError::RateLimited) => {
             stale("Anthropic asked us to slow down. Showing the last numbers.".into())
         }
@@ -231,10 +252,13 @@ mod tests {
             window_secs: None,
             severity: "normal".into(),
             active: false,
+            detail: None,
+            capped: true,
         };
         Snapshot {
             provider: "claude".into(),
             plan: None,
+            tier: None,
             limits: vec![
                 l("session", "session", session),
                 l("weekly_all", "weekly", weekly),
@@ -244,6 +268,30 @@ mod tests {
             extra_usage: false,
             fetched_at: Utc::now(),
         }
+    }
+
+    #[test]
+    fn explains_why_there_are_no_plan_limits() {
+        use credentials::AuthStatus;
+        let st = |method: &str, provider: &str| {
+            Some(AuthStatus {
+                logged_in: true,
+                auth_method: method.into(),
+                api_provider: provider.into(),
+            })
+        };
+        assert_eq!(explain_missing(None).0, "signed_out");
+        assert_eq!(
+            explain_missing(st("claude.ai", "firstParty")).0,
+            "signed_out"
+        );
+        let (status, msg) = explain_missing(st("api_key", "firstParty"));
+        assert_eq!(status, "no_plan");
+        assert!(msg.contains("API key"));
+        let (status, msg) = explain_missing(st("api_key", "bedrock"));
+        assert_eq!(status, "no_plan");
+        assert!(msg.contains("bedrock"));
+        assert!(SIGNED_OUT.contains("--sso"));
     }
 
     #[test]
