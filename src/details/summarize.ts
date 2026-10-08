@@ -17,7 +17,7 @@ export function summarize(days: DayModel[], range: Range, now: Date) {
 
   const models = new Map<string, { model: string; replies: number; outputTokens: number; apiValue: number }>();
   const perDay = new Map<string, Record<string, number>>();
-  let replies = 0, outputTokens = 0, inputTokens = 0, apiValue = 0, unpriced = 0;
+  let replies = 0, outputTokens = 0, inputTokens = 0, apiValue = 0, claudeValue = 0, unpriced = 0;
   for (const r of rows) {
     const m = models.get(r.model) ?? { model: r.model, replies: 0, outputTokens: 0, apiValue: 0 };
     m.replies += r.replies;
@@ -31,6 +31,7 @@ export function summarize(days: DayModel[], range: Range, now: Date) {
     outputTokens += r.outputTokens;
     inputTokens += r.inputTokens + r.cacheReadTokens + r.cacheWriteTokens;
     apiValue += r.apiValue;
+    if (r.model.startsWith("claude")) claudeValue += r.apiValue; // only these draw on a Claude plan
     unpriced += r.unpricedReplies;
   }
 
@@ -52,13 +53,23 @@ export function summarize(days: DayModel[], range: Range, now: Date) {
     inputTokens,
     apiValue,
     unpriced,
-    /** Calendar days covered, for "per month at this pace". */
-    spanDays: byDay.length,
+    /** Claude-model share of apiValue: the part a Claude plan actually pays for. */
+    claudeValue,
+    /**
+     * Days of history behind the numbers, for "per month at this pace": the
+     * range, but never earlier than the first day anything was logged, so a
+     * new install isn't averaged over empty weeks.
+     */
+    spanDays: Math.max(1, daysBetween(start > (days[0]?.date ?? start) ? start : days[0]?.date ?? start, ymd(now)) + 1),
     activeDays: perDay.size,
     models: sorted,
     byDay,
     maxDay: Math.max(1, ...byDay.map((d) => d.total)),
   };
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round((new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86_400_000);
 }
 
 /** API value scaled to a 30-day month at the range's pace. */

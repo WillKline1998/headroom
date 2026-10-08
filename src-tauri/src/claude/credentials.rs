@@ -142,23 +142,45 @@ pub fn auth_status() -> Option<AuthStatus> {
 }
 
 fn claude_command(args: &[&str]) -> Option<Vec<u8>> {
+    use std::io::Read;
+    use std::process::Stdio;
     let mut cmd = Command::new(find_claude_cli()?);
-    cmd.args(args);
+    cmd.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash
     }
-    cmd.output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| o.stdout)
+    let mut child = cmd.spawn().ok()?;
+    // Never let a stuck CLI stall the refresh loop.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(45);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let mut out = Vec::new();
+                child.stdout.take()?.read_to_end(&mut out).ok()?;
+                return status.success().then_some(out);
+            }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(200))
+            }
+            _ => {
+                let _ = child.kill();
+                return None;
+            }
+        }
+    }
 }
 
-/// Asks the Claude Code CLI to check its sign-in, which refreshes an expired
-/// token as a side effect. Costs no usage. Returns true if the CLI ran.
+/// Gets Claude Code to refresh an expired sign-in. `claude -p /usage` runs
+/// Claude Code's own usage lookup (no AI request, so it costs nothing), which
+/// refreshes and saves the token as a side effect. (`claude auth status` does
+/// not refresh; checked 2026-10-08.) Returns true if the CLI ran.
 pub fn nudge_refresh() -> bool {
-    claude_command(&["auth", "status"]).is_some()
+    claude_command(&["-p", "/usage"]).is_some()
 }
 
 #[cfg(test)]

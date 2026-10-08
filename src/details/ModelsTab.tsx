@@ -66,10 +66,13 @@ export function ModelsTab() {
               <strong className="value-amount">{usd(sum.apiValue)}</strong>
               <span className="value-sub">what this would have cost at pay-as-you-go API prices</span>
             </div>
-            {plan && (
+            {plan && sum.claudeValue > 0 && (
               <div className="value-compare">
-                <strong>{Math.max(0, Math.round(monthlyPace(sum.apiValue, sum.spanDays) / plan.monthly * 10) / 10)}×</strong>
-                <span>your {usd(plan.monthly)}/mo {plan.name} plan. At this pace that&apos;s about {usd(monthlyPace(sum.apiValue, sum.spanDays))} a month.</span>
+                <strong>{Math.round((monthlyPace(sum.claudeValue, sum.spanDays) / plan.monthly) * 10) / 10}×</strong>
+                <span>
+                  your {usd(plan.monthly)}/mo Claude {plan.name} plan. At this pace, Claude models would cost about {usd(monthlyPace(sum.claudeValue, sum.spanDays))} a month
+                  {sum.claudeValue < sum.apiValue - 0.005 ? " (other providers' models excluded)" : ""}, based on {sum.spanDays} {sum.spanDays === 1 ? "day" : "days"} of use.
+                </span>
               </div>
             )}
           </div>

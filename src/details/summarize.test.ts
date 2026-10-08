@@ -52,8 +52,9 @@ describe("API value", () => {
     const s = summarize([row("2026-10-07", "claude-opus-5-5", 40), row("2026-10-08", "claude-sonnet-5-5", 20)], "7", now);
     expect(s.apiValue).toBeCloseTo(30);
     expect(s.models[0].apiValue).toBeCloseTo(20);
-    expect(s.spanDays).toBe(7);
-    expect(monthlyPace(s.apiValue, s.spanDays)).toBeCloseTo(30 / 7 * 30);
+    expect(s.claudeValue).toBeCloseTo(30);
+    expect(s.spanDays).toBe(2); // history starts Oct 7, so don't average over the empty days before
+    expect(monthlyPace(s.apiValue, s.spanDays)).toBeCloseTo(30 / 2 * 30);
     expect(monthlyPace(5, 0)).toBe(0);
   });
 });
@@ -73,5 +74,18 @@ describe("heatmap", () => {
     const m = heatmap([], "30", now);
     expect(m.total).toBe(0);
     expect(m.busiestHour).toBeNull();
+  });
+});
+
+describe("Claude plan comparison", () => {
+  const now = new Date(2026, 9, 8, 15, 0);
+  it("leaves other providers' models out of the Claude value", () => {
+    const s = summarize([row("2026-10-07", "claude-opus-5-5", 40), row("2026-10-07", "glm-5.2", 10)], "30", now);
+    expect(s.apiValue).toBeCloseTo(25);
+    expect(s.claudeValue).toBeCloseTo(20);
+  });
+  it("uses the whole range once history is longer than it", () => {
+    const s = summarize([row("2026-08-01", "claude-opus-5-5", 1), row("2026-10-08", "claude-opus-5-5", 1)], "7", now);
+    expect(s.spanDays).toBe(7);
   });
 });

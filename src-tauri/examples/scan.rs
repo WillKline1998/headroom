@@ -5,7 +5,13 @@ use std::collections::BTreeMap;
 
 fn main() {
     let a = headroom_lib::analytics::scan(true);
-    println!("{} log files, {} sessions", a.files_scanned, a.sessions);
+    println!(
+        "{} log files, {} sessions, first activity {:?}",
+        a.files_scanned,
+        a.sessions,
+        a.first_seen
+            .map(|t| t.with_timezone(&chrono::Local).date_naive())
+    );
     for s in &a.sources {
         println!(
             "  source {} ({} sessions) from {}",

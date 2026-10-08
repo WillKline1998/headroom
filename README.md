@@ -21,7 +21,7 @@
 Headroom borrows the sign-in that **Claude Code** already saved on your computer, read-only. On macOS that's the login keychain; elsewhere it's `~/.claude/.credentials.json`. It then asks Anthropic for your usage. It never sees a password, and it never sends your data anywhere except Anthropic.
 
 - Usage comes from `GET https://api.anthropic.com/api/oauth/usage`, the endpoint behind Claude's own usage page and Claude Code's `/usage`. **It isn't officially documented**, so a Claude update could change it. Headroom reads the generic `limits[]` list rather than hard-coding fields, to bend rather than break.
-- Claude Code refreshes its token whenever it runs. If the token has expired, Headroom asks the `claude` CLI to check its sign-in (`claude auth status`), which costs no usage. Headroom never writes credentials itself.
+- Claude Code refreshes its token whenever it runs. If the token has expired, Headroom runs `claude -p /usage`, Claude Code's own usage lookup. It makes no AI request, so it costs nothing, and it makes Claude Code refresh and save its sign-in. Headroom never writes credentials itself.
 - Model analytics read `~/.claude/projects/**/*.jsonl` locally. Each assistant reply is counted once, with sub-agent transcripts included.
 - With Hermes Agent installed, Headroom also opens `~/.hermes/state.db` (and any profile databases) **read-only**. It takes per-session token totals per model and spreads them across that session's reply timestamps, so days and hours line up with real activity. It never reads message text. Models missing from Headroom's price table fall back to Hermes's own cost estimate.
 
