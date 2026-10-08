@@ -25,7 +25,7 @@ Headroom borrows the sign-in that **Claude Code** already saved on your computer
 - Model analytics read `~/.claude/projects/**/*.jsonl` locally. Each assistant reply is counted once, with sub-agent transcripts included.
 - With Hermes Agent installed, Headroom also opens `~/.hermes/state.db` (and any profile databases) **read-only**. It takes per-session token totals per model and spreads them across that session's reply timestamps, so days and hours line up with real activity. It never reads message text. Models missing from Headroom's price table fall back to Hermes's own cost estimate.
 
-**Requirement:** Claude Code installed and signed in on the same computer.
+**Requirement:** Claude Code installed and signed in on the same computer, **or** [Hermes Agent](https://github.com/NousResearch/hermes-agent) signed in to Claude. When Claude Code isn't there, Headroom reads Hermes's Claude sign-in from `~/.hermes/auth.json` (read-only; Hermes renews it whenever it uses Claude).
 
 | Claude Code is signed in with… | Headroom shows |
 | --- | --- |

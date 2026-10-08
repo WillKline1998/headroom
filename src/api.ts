@@ -28,6 +28,8 @@ export type Snapshot = {
   breakdownSince: string | null;
   extraUsage: boolean;
   fetchedAt: string;
+  /** Whose sign-in fetched it: "claude_code" or "hermes". */
+  via: string;
 };
 
 export type UsageState = {

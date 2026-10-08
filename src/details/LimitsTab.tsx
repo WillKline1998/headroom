@@ -27,7 +27,7 @@ export function LimitsTab() {
     <section>
       <h1>Limits</h1>
       <p className="muted">
-        {s.plan ? `Claude ${s.plan[0].toUpperCase()}${s.plan.slice(1)} plan` : "Claude"} · updated {ago(new Date(s.fetchedAt), now)}
+        {s.plan ? `Claude ${s.plan[0].toUpperCase()}${s.plan.slice(1)} plan` : "Claude"} · updated {ago(new Date(s.fetchedAt), now)}{s.via === "hermes" && " · via Hermes Agent's sign-in"}
         {state.status === "error" && state.message && <span className="warn-text"> · {state.message}</span>}
       </p>
       <div className="limits limits-large">

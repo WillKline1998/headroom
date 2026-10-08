@@ -46,19 +46,36 @@ pub fn explain_missing(auth: Option<credentials::AuthStatus>) -> (&'static str, 
 const EXPIRED: &str =
     "Your Claude sign-in expired. Open Claude Code once and Headroom will reconnect.";
 
+const HERMES_EXPIRED: &str = "Hermes's Claude sign-in has expired. It renews the next time Hermes uses Claude, and Headroom will pick it up.";
+
+/// Prefer Claude Code's sign-in (it can be refreshed on demand); fall back to
+/// Hermes Agent's, so people who only use Claude through Hermes still get bars.
 async fn load_token(force_refresh: bool) -> Result<credentials::Token, (&'static str, String)> {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut token = credentials::load().map_err(|e| match e {
-            credentials::CredError::NotFound => explain_missing(credentials::auth_status()),
-            e => ("signed_out", e.to_string()),
-        })?;
+        let claude_code = credentials::load();
+        let hermes = || {
+            credentials::load_hermes()
+                .ok()
+                .filter(|t| !t.is_expired(Utc::now()))
+        };
+        let mut token = match claude_code {
+            Ok(t) => t,
+            Err(credentials::CredError::NotFound) => {
+                return match credentials::load_hermes() {
+                    Ok(t) if !t.is_expired(Utc::now()) => Ok(t),
+                    Ok(_) => Err(("signed_out", HERMES_EXPIRED.to_string())),
+                    Err(_) => Err(explain_missing(credentials::auth_status())),
+                };
+            }
+            Err(e) => return Err(("signed_out", e.to_string())),
+        };
         if force_refresh || token.is_expired(Utc::now()) {
             // Let Claude Code refresh its own token, then read it again.
             if credentials::nudge_refresh() {
                 token = credentials::load().map_err(|e| ("signed_out", e.to_string()))?;
             }
             if token.is_expired(Utc::now()) {
-                return Err(("signed_out", EXPIRED.to_string()));
+                return hermes().ok_or(("signed_out", EXPIRED.to_string()));
             }
         }
         Ok(token)
@@ -267,6 +284,7 @@ mod tests {
             breakdown_since: None,
             extra_usage: false,
             fetched_at: Utc::now(),
+            via: "claude_code".into(),
         }
     }
 

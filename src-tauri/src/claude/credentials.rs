@@ -11,6 +11,8 @@ use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub struct Token {
+    /// Whose sign-in this is: "claude_code" or "hermes".
+    pub source: &'static str,
     pub access_token: String,
     pub expires_at: Option<DateTime<Utc>>,
     pub plan: Option<String>,
@@ -58,6 +60,7 @@ pub fn parse(json: &str) -> Result<Token, CredError> {
         serde_json::from_str(json).map_err(|e| CredError::Unreadable(e.to_string()))?;
     let o = stored.oauth.ok_or(CredError::NotFound)?;
     Ok(Token {
+        source: "claude_code",
         access_token: o.access_token,
         expires_at: o
             .expires_at
@@ -65,6 +68,53 @@ pub fn parse(json: &str) -> Result<Token, CredError> {
         plan: o.subscription_type,
         tier: o.rate_limit_tier,
     })
+}
+
+/// Hermes Agent's Claude sign-in, for people who use Claude through Hermes
+/// without Claude Code. Read-only from `$HERMES_HOME/auth.json`; Hermes renews
+/// it itself whenever it calls Claude. Picks the OAuth credential that stays
+/// valid longest.
+pub fn load_hermes() -> Result<Token, CredError> {
+    let home = std::env::var_os("HERMES_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|h| h.join(".hermes")))
+        .ok_or(CredError::NotFound)?;
+    let json = std::fs::read_to_string(home.join("auth.json")).map_err(|_| CredError::NotFound)?;
+    parse_hermes(&json)
+}
+
+#[derive(Deserialize)]
+struct HermesAuth {
+    #[serde(default)]
+    credential_pool: std::collections::HashMap<String, Vec<HermesCred>>,
+}
+
+#[derive(Deserialize)]
+struct HermesCred {
+    auth_type: Option<String>,
+    access_token: Option<String>,
+    expires_at_ms: Option<i64>,
+}
+
+pub fn parse_hermes(json: &str) -> Result<Token, CredError> {
+    let auth: HermesAuth =
+        serde_json::from_str(json).map_err(|e| CredError::Unreadable(e.to_string()))?;
+    auth.credential_pool
+        .get("anthropic")
+        .into_iter()
+        .flatten()
+        .filter(|c| c.auth_type.as_deref() == Some("oauth"))
+        .filter_map(|c| Some((c.access_token.clone()?, c.expires_at_ms)))
+        .filter(|(t, _)| !t.is_empty())
+        .max_by_key(|(_, exp)| exp.unwrap_or(0))
+        .map(|(access_token, exp)| Token {
+            source: "hermes",
+            access_token,
+            expires_at: exp.and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
+            plan: None, // Hermes doesn't record the plan; the widget just says "Claude"
+            tier: None,
+        })
+        .ok_or(CredError::NotFound)
 }
 
 /// Claude Code's config dir: `$CLAUDE_CONFIG_DIR`, else `~/.claude`.
@@ -212,6 +262,23 @@ mod tests {
     }
 
     #[test]
+    fn reads_hermes_oauth_picking_the_longest_lived() {
+        let json = r#"{"credential_pool":{
+            "nous":[{"auth_type":"oauth","access_token":"nope","expires_at_ms":9999999999999}],
+            "anthropic":[
+              {"auth_type":"oauth","access_token":"old","expires_at_ms":1791400000000},
+              {"auth_type":"api_key","access_token":"key"},
+              {"auth_type":"oauth","access_token":"new","expires_at_ms":1791500000000},
+              {"auth_type":"oauth","source":"claude_code"}]}}"#;
+        let t = parse_hermes(json).unwrap();
+        assert_eq!((t.source, t.access_token.as_str()), ("hermes", "new"));
+        assert!(matches!(
+            parse_hermes(r#"{"credential_pool":{}}"#),
+            Err(CredError::NotFound)
+        ));
+    }
+
+    #[test]
     fn missing_oauth_is_not_found() {
         assert!(matches!(parse(r#"{"other":1}"#), Err(CredError::NotFound)));
     }
@@ -220,6 +287,7 @@ mod tests {
     fn expiry_has_a_minute_of_margin() {
         let now = Utc::now();
         let t = |secs| Token {
+            source: "claude_code",
             access_token: String::new(),
             expires_at: Some(now + chrono::Duration::seconds(secs)),
             plan: None,

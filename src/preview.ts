@@ -23,7 +23,7 @@ const breakdown = [
 
 function usageFor(account: string | null): UsageState {
   const base = { status: "ok" as const, message: null, checkedAt: iso(now - 40_000) };
-  const snapshot = { provider: "claude", fetchedAt: iso(now - 40_000), extraUsage: false, breakdownSince: iso(now - 2.5 * 24 * H), breakdown };
+  const snapshot = { provider: "claude", via: "claude_code", fetchedAt: iso(now - 40_000), extraUsage: false, breakdownSince: iso(now - 2.5 * 24 * H), breakdown };
   if (account === "apikey") {
     return { snapshot: null, status: "no_plan", checkedAt: base.checkedAt, message: "Claude Code is signed in with an API key, which is billed per use and has no plan limits. The Models tab still works. To track a Claude plan instead, run `claude auth login` (add `--sso` for company sign-in)." };
   }

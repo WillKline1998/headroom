@@ -308,6 +308,7 @@ pub fn parse(
         breakdown_since,
         extra_usage: raw.extra_usage.map(|e| e.is_enabled).unwrap_or(false),
         fetched_at: now,
+        via: "claude_code".into(),
     })
 }
 
@@ -336,7 +337,9 @@ pub async fn fetch(client: &reqwest::Client, token: &Token) -> Result<Snapshot, 
         .text()
         .await
         .map_err(|e| FetchError::Other(e.to_string()))?;
-    parse(&body, token.plan.clone(), token.tier.clone(), Utc::now())
+    let mut snapshot = parse(&body, token.plan.clone(), token.tier.clone(), Utc::now())?;
+    snapshot.via = token.source.into();
+    Ok(snapshot)
 }
 
 #[cfg(test)]

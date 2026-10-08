@@ -47,6 +47,8 @@ pub struct Snapshot {
     pub breakdown_since: Option<DateTime<Utc>>,
     pub extra_usage: bool,
     pub fetched_at: DateTime<Utc>,
+    /// Whose sign-in fetched this: "claude_code" or "hermes".
+    pub via: String,
 }
 
 /// What the widget shows: the latest numbers plus whether they're current.
