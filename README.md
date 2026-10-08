@@ -9,7 +9,7 @@
 - **A pace tick** on each bar showing how much of the window has passed. If the fill is past the tick, you're spending faster than the clock.
 - **Menu bar / tray readout** (`7% · 30%`) and **alerts** when a limit crosses thresholds you choose (80% and 95% by default).
 - **Details window**:
-  - *Limits*: big bars, plus **where this week went** (Claude Code vs. chats vs. Cowork), straight from Anthropic.
+  - *Limits*: big bars, a **chart of how each window filled** against an even pace (Headroom keeps a small local log of its checks, 35 days), plus **where this week went** (Claude Code vs. chats vs. Cowork), straight from Anthropic.
   - *Models*: which models you actually use, from Claude Code's local logs. Shows replies and tokens per model, a per-day chart, and 7 days / 30 days / all time.
   - **API value**: what that usage would have cost at Anthropic's pay-as-you-go prices. Each reply is priced individually, including cache reads/writes and long-prompt tiers. It's compared with your plan's monthly price.
   - **Busiest hours**: a weekday × hour heatmap of when you work with Claude.
@@ -63,6 +63,7 @@ src-tauri/src/
   claude/usage.rs         call the usage endpoint, parse it into provider-neutral limits
   model.rs                Limit / Snapshot types shared with the UI
   poller.rs               background refresh loop, menu-bar text, threshold alerts
+  history.rs              local log of each check (history.jsonl), feeds the window charts
   analytics.rs            per-day, per-model and per-hour stats; Claude Code log reader
   hermes.rs               optional Hermes Agent source (read-only SQLite)
   pricing.rs              API list prices (for "API value"), dated and unit-tested

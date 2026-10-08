@@ -78,10 +78,17 @@ export type Settings = {
   includeHermes: boolean;
 };
 
+/** One recorded usage check, as kept by Rust in history.jsonl. */
+export type HistoryPoint = {
+  t: string;
+  limits: { id: string; percent: number; resetsAt: string | null }[];
+};
+
 export const api = {
   state: () => invoke<UsageState>("get_state"),
   refresh: () => invoke<void>("refresh_now"),
   analytics: () => invoke<Analytics>("get_analytics"),
+  history: () => invoke<HistoryPoint[]>("get_history"),
   hermesDetected: () => invoke<boolean>("hermes_detected"),
   settings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),

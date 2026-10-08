@@ -1,13 +1,21 @@
-import { api } from "../api";
+import { useEffect, useState } from "react";
+import { api, type HistoryPoint } from "../api";
 import { LimitBar } from "../components/LimitBar";
 import { Message } from "../components/Message";
+import { WindowChart } from "../components/WindowChart";
 import { ago } from "../format";
+import { chartable } from "./history";
 import { useNow, useUsage } from "../hooks";
 
 export function LimitsTab() {
   const state = useUsage();
   const now = useNow();
   const s = state.snapshot;
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  // Re-read when a new check lands, since that's when Rust appends a point.
+  useEffect(() => {
+    api.history().then(setHistory);
+  }, [state.checkedAt]);
 
   if (!s) {
     return (
@@ -36,6 +44,16 @@ export function LimitsTab() {
         ))}
       </div>
       <p className="hint">The thin tick on each bar shows how much of that window has passed. A fill beyond the tick means you&apos;re using it faster than the clock.</p>
+
+      {chartable(s.limits).length > 0 && (
+        <>
+          <h2>How this window filled</h2>
+          {chartable(s.limits).map((l) => (
+            <WindowChart key={l.id} limit={l} history={history} now={now} />
+          ))}
+          <p className="hint">Solid line: what you&apos;ve used. Dashed line: an even pace from the start of the window to its reset.</p>
+        </>
+      )}
 
       {s.breakdown.length > 0 && (
         <>

@@ -4,7 +4,7 @@
 // Fakes the Rust side with sample data so the UI can be designed,
 // screenshotted and demoed without the desktop app.
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import type { Analytics, Limit, Settings, UsageState } from "./api";
+import type { Analytics, HistoryPoint, Limit, Settings, UsageState } from "./api";
 
 const now = Date.now();
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -86,16 +86,42 @@ function sampleAnalytics(): Analytics {
   };
 }
 
+// A check every 20 minutes across each limit's current window, climbing in
+// bursts (daytime for the weekly window) and ending at the limit's current percent.
+function sampleHistory(usage: UsageState): HistoryPoint[] {
+  const limits = usage.snapshot?.limits.filter((l) => l.resetsAt && l.windowSecs) ?? [];
+  const step = H / 3;
+  const first = Math.min(...limits.map((l) => new Date(l.resetsAt!).getTime() - l.windowSecs! * 1000));
+  const points: HistoryPoint[] = [];
+  for (let t = Math.ceil(first / step) * step; t < now - step / 2; t += step) {
+    const readings = limits.flatMap((l) => {
+      const resetsAt = new Date(l.resetsAt!).getTime();
+      const start = resetsAt - l.windowSecs! * 1000;
+      if (t < start) return [];
+      const progress = (t - start) / (now - start);
+      const hour = new Date(t).getHours();
+      // Weekly usage accrues mostly during the day; the session window just ramps.
+      const wobble = l.group === "weekly" && (hour < 8 || hour > 22) ? 0.9 : 1;
+      const percent = Math.round(l.percent * Math.pow(progress, 1.3) * wobble * 10) / 10;
+      return [{ id: l.id, percent, resetsAt: l.resetsAt }];
+    });
+    points.push({ t: iso(t), limits: readings });
+  }
+  return points;
+}
+
 let settings: Settings = { refreshSecs: 180, alwaysOnTop: true, notify: true, notifyAt: [80, 95], trayText: "both", includeHermes: true };
 
 export function installPreview(label: string) {
   mockWindows(label);
   const usage = usageFor(new URLSearchParams(location.search).get("account"));
   const analytics = sampleAnalytics();
+  const history = sampleHistory(usage);
   mockIPC((cmd, args) => {
     switch (cmd) {
       case "get_state": return usage;
       case "get_analytics": return analytics;
+      case "get_history": return history;
       case "get_settings": return settings;
       case "save_settings": settings = (args as { settings: Settings }).settings; return settings;
       case "plugin:autostart|is_enabled": return false;

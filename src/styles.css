@@ -137,3 +137,13 @@ a { color: var(--ok); }
 .heat-axis { margin-top: 2px; }
 .heat-hour { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: visible; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; background: var(--track); border-radius: 4px; padding: 0 4px; color: var(--ink); }
+
+/* how a window filled */
+.window-chart { margin: 0 0 18px; }
+.window-chart figcaption { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.window-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.wc-grid { stroke: var(--rule); stroke-width: 1; }
+.wc-label { fill: var(--muted); font-size: 10.5px; }
+.wc-pace { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.7; }
+.wc-area { fill: var(--ok); opacity: 0.18; }
+.wc-line { fill: none; stroke: var(--ok); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
