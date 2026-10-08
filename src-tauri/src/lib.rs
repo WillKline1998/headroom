@@ -60,9 +60,21 @@ fn save_settings(
     Ok(s)
 }
 
+// Must be `async`: on Windows, creating a window from a synchronous command
+// deadlocks WebView2 and freezes the whole app (see `open_details_later`).
 #[tauri::command]
-fn open_details(app: AppHandle, tab: Option<String>) -> Result<(), String> {
+async fn open_details(app: AppHandle, tab: Option<String>) -> Result<(), String> {
     show_details(&app, tab.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Opens the details window from a menu click. Event handlers run on the UI
+/// thread, where creating a window deadlocks on Windows, so hand it to the
+/// async runtime instead.
+fn open_details_later(app: &AppHandle, tab: Option<&'static str>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = show_details(&app, tab);
+    });
 }
 
 fn show_widget(app: &AppHandle) {
@@ -111,12 +123,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_menu_event(|app, e| match e.id.as_ref() {
             "show" => show_widget(app),
-            "details" => {
-                let _ = show_details(app, None);
-            }
-            "settings" => {
-                let _ = show_details(app, Some("settings"));
-            }
+            "details" => open_details_later(app, None),
+            "settings" => open_details_later(app, Some("settings")),
             "refresh" => app.state::<AppState>().wake.notify_one(),
             "quit" => app.exit(0),
             _ => {}
