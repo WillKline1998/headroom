@@ -14,7 +14,7 @@
   - **API value**: what that usage would have cost at Anthropic's pay-as-you-go prices. Each reply is priced individually, including cache reads/writes and long-prompt tiers. It's compared with your plan's monthly price.
   - **Busiest hours**: a weekday × hour heatmap of when you work with Claude.
   - **Optional [Hermes Agent](https://github.com/NousResearch/hermes-agent) source**: if Hermes is installed, its usage is included automatically, with a switch in Settings and an All / Claude Code / Hermes filter. Plain Claude Code users never see any of this.
-- Small (~10 MB), runs on **macOS, Windows and Linux**, light and dark mode.
+- Small (about 6 MB), runs on **macOS, Windows and Linux**, light and dark mode.
 
 ## How it works
 
