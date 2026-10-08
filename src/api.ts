@@ -39,6 +39,8 @@ export type UsageState = {
 
 export type DayModel = {
   date: string;
+  /** "claude_code" | "hermes" */
+  source: string;
   model: string;
   replies: number;
   inputTokens: number;
@@ -51,9 +53,21 @@ export type DayModel = {
 };
 
 /** Replies in one local hour; weekday 0 = Monday. */
-export type HourCount = { date: string; weekday: number; hour: number; replies: number };
+export type HourCount = { date: string; source: string; weekday: number; hour: number; replies: number };
 
-export type Analytics = { days: DayModel[]; hours: HourCount[]; pricesAsOf: string; sessions: number; filesScanned: number; firstSeen: string | null; sources: string[] };
+export type SourceInfo = { id: string; label: string; location: string; sessions: number };
+
+export type Analytics = {
+  days: DayModel[];
+  hours: HourCount[];
+  pricesAsOf: string;
+  sessions: number;
+  filesScanned: number;
+  firstSeen: string | null;
+  sources: SourceInfo[];
+  /** Hermes is installed but switched off in Settings. */
+  hermesAvailable: boolean;
+};
 
 export type Settings = {
   refreshSecs: number;
@@ -61,12 +75,14 @@ export type Settings = {
   notify: boolean;
   notifyAt: number[];
   trayText: "both" | "session" | "weekly" | "none";
+  includeHermes: boolean;
 };
 
 export const api = {
   state: () => invoke<UsageState>("get_state"),
   refresh: () => invoke<void>("refresh_now"),
   analytics: () => invoke<Analytics>("get_analytics"),
+  hermesDetected: () => invoke<boolean>("hermes_detected"),
   settings: () => invoke<Settings>("get_settings"),
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
   openDetails: (tab?: string) => invoke<void>("open_details", { tab }),

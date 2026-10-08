@@ -10,9 +10,11 @@ export function SettingsTab() {
   const [s, setS] = useState<Settings | null>(null);
   const [autostart, setAutostart] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [hermes, setHermes] = useState(false);
 
   useEffect(() => {
     api.settings().then(setS);
+    api.hermesDetected().then(setHermes).catch(() => {});
     isEnabled().then(setAutostart).catch(() => {});
   }, []);
 
@@ -78,6 +80,16 @@ export function SettingsTab() {
           </button>
         ))}
       </div>
+
+      {hermes && (
+        <>
+          <label className="row">
+            <span>Include Hermes Agent usage in Models</span>
+            <input type="checkbox" checked={s.includeHermes} onChange={(e) => update({ includeHermes: e.target.checked })} />
+          </label>
+          <p className="hint">Hermes Agent is installed here. When Hermes uses your Claude account, its replies count toward the same limits as Claude Code. Headroom reads only token counts and times from its database, never your messages.</p>
+        </>
+      )}
 
       <h2>About</h2>
       <p className="hint">

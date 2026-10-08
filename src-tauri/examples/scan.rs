@@ -4,23 +4,24 @@
 use std::collections::BTreeMap;
 
 fn main() {
-    let a = headroom_lib::analytics::scan();
-    println!(
-        "{} log files, {} sessions, sources: {:?}",
-        a.files_scanned, a.sessions, a.sources
-    );
-    let mut by_model: BTreeMap<&str, (u64, u64, f64, u64)> = BTreeMap::new();
+    let a = headroom_lib::analytics::scan(true);
+    println!("{} log files, {} sessions", a.files_scanned, a.sessions);
+    for s in &a.sources {
+        println!(
+            "  source {} ({} sessions) from {}",
+            s.label, s.sessions, s.location
+        );
+    }
+    let mut by_model: BTreeMap<(&str, &str), (u64, u64, f64, u64)> = BTreeMap::new();
     for d in &a.days {
-        let e = by_model.entry(&d.model).or_default();
+        let e = by_model.entry((&d.source, &d.model)).or_default();
         e.0 += d.replies;
         e.1 += d.output_tokens;
         e.2 += d.api_value;
         e.3 += d.unpriced_replies;
     }
-    for (model, (replies, out, value, unpriced)) in &by_model {
-        println!(
-            "{model:28} {replies:6} replies {out:>10} out  ${value:>9.2}  unpriced {unpriced}"
-        );
+    for ((source, model), (replies, out, value, unpriced)) in &by_model {
+        println!("{source:12} {model:22} {replies:6} replies {out:>10} out  ${value:>9.2}  unpriced {unpriced}");
     }
     let total: f64 = by_model.values().map(|v| v.2).sum();
     println!(

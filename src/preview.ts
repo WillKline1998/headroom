@@ -67,20 +67,26 @@ function sampleAnalytics(): Analytics {
     for (const [model, scale] of [["claude-opus-5-5", 120], ["claude-sonnet-5-5", 45], ["claude-haiku-5-5", 15]] as const) {
       const replies = Math.round(scale * rand() * (i < 10 ? 1.4 : 1));
       total += replies;
-      if (replies) days.push({ date, model, replies, inputTokens: replies * 40, outputTokens: replies * 900, cacheReadTokens: replies * 30_000, cacheWriteTokens: replies * 1_500, apiValue: replies * price[model], unpricedReplies: 0 });
+      if (replies) days.push({ date, source: i % 3 === 0 && model === "claude-opus-5-5" ? "hermes" : "claude_code", model, replies, inputTokens: replies * 40, outputTokens: replies * 900, cacheReadTokens: replies * 30_000, cacheWriteTokens: replies * 1_500, apiValue: replies * price[model], unpricedReplies: 0 });
     }
     const weekday = (d.getDay() + 6) % 7;
     const weights = Array.from({ length: 24 }, (_, h) => (h >= 19 && h <= 23 ? 3 : h >= 8 && h <= 11 && weekday < 5 ? 1.5 : h < 7 ? 0 : 0.4) * (0.5 + rand()));
     const sum = weights.reduce((a, b) => a + b, 0);
     weights.forEach((w, hour) => {
       const replies = Math.round((total * w) / sum);
-      if (replies) hours.push({ date, weekday, hour, replies });
+      if (replies) hours.push({ date, source: "claude_code", weekday, hour, replies });
     });
   }
-  return { days, hours, pricesAsOf: "2026-10-08", sessions: 64, filesScanned: 211, firstSeen: iso(now - 29 * 24 * H), sources: ["~/.claude/projects"] };
+  return {
+    days, hours, pricesAsOf: "2026-10-08", sessions: 64, filesScanned: 211, firstSeen: iso(now - 29 * 24 * H), hermesAvailable: false,
+    sources: [
+      { id: "claude_code", label: "Claude Code", location: "~/.claude/projects", sessions: 52 },
+      { id: "hermes", label: "Hermes Agent", location: "~/.hermes/state.db", sessions: 12 },
+    ],
+  };
 }
 
-let settings: Settings = { refreshSecs: 180, alwaysOnTop: true, notify: true, notifyAt: [80, 95], trayText: "both" };
+let settings: Settings = { refreshSecs: 180, alwaysOnTop: true, notify: true, notifyAt: [80, 95], trayText: "both", includeHermes: true };
 
 export function installPreview(label: string) {
   mockWindows(label);
@@ -93,6 +99,7 @@ export function installPreview(label: string) {
       case "get_settings": return settings;
       case "save_settings": settings = (args as { settings: Settings }).settings; return settings;
       case "plugin:autostart|is_enabled": return false;
+      case "hermes_detected": return true;
       default: return null; // window sizing, refresh, event listeners: no-ops in the browser
     }
   });

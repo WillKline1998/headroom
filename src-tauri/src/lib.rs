@@ -2,6 +2,7 @@
 
 pub mod analytics;
 mod claude;
+mod hermes;
 mod model;
 mod poller;
 pub mod pricing;
@@ -25,10 +26,17 @@ fn refresh_now(state: tauri::State<AppState>) {
 }
 
 #[tauri::command]
-async fn get_analytics() -> Result<analytics::Analytics, String> {
-    tauri::async_runtime::spawn_blocking(analytics::scan)
+async fn get_analytics(state: tauri::State<'_, AppState>) -> Result<analytics::Analytics, String> {
+    let include_hermes = state.settings.lock().unwrap().include_hermes;
+    tauri::async_runtime::spawn_blocking(move || analytics::scan(include_hermes))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Whether Hermes Agent is installed here (decides if its Settings switch shows).
+#[tauri::command]
+fn hermes_detected() -> bool {
+    !hermes::databases().is_empty()
 }
 
 #[tauri::command]
@@ -180,6 +188,7 @@ pub fn run() {
             get_state,
             refresh_now,
             get_analytics,
+            hermes_detected,
             get_settings,
             save_settings,
             open_details

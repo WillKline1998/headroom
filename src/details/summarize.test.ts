@@ -3,7 +3,7 @@ import { heatmap, monthlyPace, summarize } from "./summarize";
 import type { DayModel, HourCount } from "../api";
 
 const row = (date: string, model: string, replies: number, outputTokens = 0): DayModel => ({
-  date, model, replies, outputTokens, inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, apiValue: replies * 0.5, unpricedReplies: 0,
+  date, source: "claude_code", model, replies, outputTokens, inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, apiValue: replies * 0.5, unpricedReplies: 0,
 });
 
 describe("summarize", () => {
@@ -60,7 +60,7 @@ describe("API value", () => {
 
 describe("heatmap", () => {
   const now = new Date(2026, 9, 8, 15, 0);
-  const h = (date: string, weekday: number, hour: number, replies: number): HourCount => ({ date, weekday, hour, replies });
+  const h = (date: string, weekday: number, hour: number, replies: number): HourCount => ({ date, source: "claude_code", weekday, hour, replies });
   it("buckets replies by weekday and hour within the range", () => {
     const m = heatmap([h("2026-10-07", 2, 22, 30), h("2026-10-06", 1, 22, 10), h("2026-10-06", 1, 9, 15), h("2026-08-01", 5, 3, 999)], "7", now);
     expect(m.grid[2][22]).toBe(30);

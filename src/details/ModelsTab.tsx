@@ -13,6 +13,7 @@ export function ModelsTab() {
   const [data, setData] = useState<Analytics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("30");
+  const [source, setSource] = useState<string>("all");
   const usage = useUsage();
 
   useEffect(() => {
@@ -20,15 +21,30 @@ export function ModelsTab() {
   }, []);
 
   const now = useMemo(() => new Date(), [data]);
-  const sum = useMemo(() => (data ? summarize(data.days, range, now) : null), [data, range, now]);
-  const heat = useMemo(() => (data ? heatmap(data.hours, range, now, data.days[0]?.date) : null), [data, range, now]);
+  const pick = <T extends { source: string }>(rows: T[]) => (source === "all" ? rows : rows.filter((r) => r.source === source));
+  const sum = useMemo(() => (data ? summarize(pick(data.days), range, now) : null), [data, range, now, source]);
+  const heat = useMemo(() => (data ? heatmap(pick(data.hours), range, now, data.days[0]?.date) : null), [data, range, now, source]);
+  const sources = data?.sources ?? [];
   const color = (model: string) => PALETTE[Math.max(0, sum?.models.findIndex((m) => m.model === model) ?? 0) % PALETTE.length];
   const plan = planPrice(usage.snapshot?.plan ?? null, usage.snapshot?.tier ?? null);
 
   return (
     <section>
       <h1>Models</h1>
-      <p className="muted">From Claude Code&apos;s logs on this computer. Nothing leaves your machine. Chats in the Claude app aren&apos;t logged locally; see “Where this week went” on the Limits tab for that split.</p>
+      <p className="muted">
+        From {sources.length > 1 ? "Claude Code's and Hermes Agent's logs" : sources[0]?.id === "hermes" ? "Hermes Agent's logs" : "Claude Code's logs"} on this computer. Nothing leaves your machine.
+        Chats in the Claude app aren&apos;t logged locally; see “Where this week went” on the Limits tab for that split.
+      </p>
+
+      {sources.length > 1 && (
+        <div className="pills" role="radiogroup" aria-label="Source">
+          {[{ id: "all", label: "All sources" }, ...sources].map((s) => (
+            <button key={s.id} className="pill" role="radio" aria-checked={source === s.id} onClick={() => setSource(s.id)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="pills" role="radiogroup" aria-label="Date range">
         {(Object.keys(RANGES) as Range[]).map((r) => (
@@ -126,7 +142,13 @@ export function ModelsTab() {
           </p>
         </>
       )}
-      {data && <p className="hint">{plural(data.filesScanned, "log file")} · {plural(data.sessions, "session")} overall{data.firstSeen ? ` · since ${new Date(data.firstSeen).toLocaleDateString()}` : ""}</p>}
+      {data && (
+        <p className="hint">
+          {sources.map((s) => `${s.label}: ${plural(s.sessions, "session")}`).join(" · ") || "No logs found"}
+          {data.firstSeen ? ` · since ${new Date(data.firstSeen).toLocaleDateString()}` : ""}
+          {data.hermesAvailable && " · Hermes Agent usage is switched off in Settings."}
+        </p>
+      )}
     </section>
   );
 }

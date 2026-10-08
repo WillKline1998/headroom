@@ -13,6 +13,7 @@
   - *Models*: which models you actually use, from Claude Code's local logs. Shows replies and tokens per model, a per-day chart, and 7 days / 30 days / all time.
   - **API value**: what that usage would have cost at Anthropic's pay-as-you-go prices. Each reply is priced individually, including cache reads/writes and long-prompt tiers. It's compared with your plan's monthly price.
   - **Busiest hours**: a weekday × hour heatmap of when you work with Claude.
+  - **Optional [Hermes Agent](https://github.com/NousResearch/hermes-agent) source**: if Hermes is installed, its usage is included automatically, with a switch in Settings and an All / Claude Code / Hermes filter. Plain Claude Code users never see any of this.
 - Small (~10 MB), runs on **macOS, Windows and Linux**, light and dark mode.
 
 ## How it works
@@ -22,6 +23,7 @@ Headroom borrows the sign-in that **Claude Code** already saved on your computer
 - Usage comes from `GET https://api.anthropic.com/api/oauth/usage`, the endpoint behind Claude's own usage page and Claude Code's `/usage`. **It isn't officially documented**, so a Claude update could change it. Headroom reads the generic `limits[]` list rather than hard-coding fields, to bend rather than break.
 - Claude Code refreshes its token whenever it runs. If the token has expired, Headroom asks the `claude` CLI to check its sign-in (`claude auth status`), which costs no usage. Headroom never writes credentials itself.
 - Model analytics read `~/.claude/projects/**/*.jsonl` locally. Each assistant reply is counted once, with sub-agent transcripts included.
+- With Hermes Agent installed, Headroom also opens `~/.hermes/state.db` (and any profile databases) **read-only**. It takes per-session token totals per model and spreads them across that session's reply timestamps, so days and hours line up with real activity. It never reads message text. Models missing from Headroom's price table fall back to Hermes's own cost estimate.
 
 **Requirement:** Claude Code installed and signed in on the same computer.
 
@@ -61,7 +63,8 @@ src-tauri/src/
   claude/usage.rs         call the usage endpoint, parse it into provider-neutral limits
   model.rs                Limit / Snapshot types shared with the UI
   poller.rs               background refresh loop, menu-bar text, threshold alerts
-  analytics.rs            per-day, per-model and per-hour stats from Claude Code's local logs
+  analytics.rs            per-day, per-model and per-hour stats; Claude Code log reader
+  hermes.rs               optional Hermes Agent source (read-only SQLite)
   pricing.rs              API list prices (for "API value"), dated and unit-tested
   settings.rs             preferences (JSON in the OS config folder)
   lib.rs                  windows, tray menu, commands

@@ -1,8 +1,12 @@
-//! Local analytics from Claude Code's conversation logs (`~/.claude/projects/**/*.jsonl`).
+//! Local usage analytics. Nothing leaves the computer.
 //!
-//! Every assistant reply in those logs records the model and token counts.
-//! Nothing leaves the computer. Claude chats on claude.ai/desktop aren't in
-//! these logs; the usage endpoint's weekly breakdown covers that split instead.
+//! Sources:
+//! - **Claude Code**: `~/.claude/projects/**/*.jsonl`. Every assistant reply
+//!   records its model and token counts.
+//! - **Hermes Agent** (optional, see `hermes.rs`): `~/.hermes/state.db`.
+//!
+//! Claude chats on claude.ai / desktop aren't logged locally; the usage
+//! endpoint's weekly breakdown covers that split instead.
 
 use crate::pricing::{self, Tokens};
 use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike, Utc};
@@ -11,11 +15,13 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-/// One row per (local day, model): the UI aggregates any date range from these.
+/// One row per (local day, source, model): the UI aggregates any range from these.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DayModel {
     pub date: NaiveDate,
+    /// "claude_code" | "hermes"
+    pub source: String,
     pub model: String,
     pub replies: u64,
     pub input_tokens: u64,
@@ -28,15 +34,27 @@ pub struct DayModel {
     pub unpriced_replies: u64,
 }
 
-/// Replies per local (date, hour), for the "busiest hours" heatmap.
+/// Replies per local (date, hour, source), for the "busiest hours" heatmap.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct HourCount {
     pub date: NaiveDate,
+    pub source: String,
     /// 0 = Monday … 6 = Sunday
     pub weekday: u32,
     pub hour: u32,
     pub replies: u64,
+}
+
+/// A source that was found on this computer.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceInfo {
+    pub id: String,
+    pub label: String,
+    /// Where it was read from, e.g. a folder or database path.
+    pub location: String,
+    pub sessions: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -48,7 +66,9 @@ pub struct Analytics {
     pub sessions: usize,
     pub files_scanned: usize,
     pub first_seen: Option<DateTime<Utc>>,
-    pub sources: Vec<String>,
+    pub sources: Vec<SourceInfo>,
+    /// Hermes was found but turned off in Settings.
+    pub hermes_available: bool,
 }
 
 #[derive(Deserialize)]
@@ -140,50 +160,59 @@ fn jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Collects usage from any source into day/hour rows.
 #[derive(Default)]
-struct Acc {
-    rows: HashMap<(NaiveDate, String), DayModel>,
-    hours: HashMap<(NaiveDate, u32), u64>,
+pub struct Acc {
+    rows: HashMap<(NaiveDate, String, String), DayModel>,
+    hours: HashMap<(NaiveDate, u32, String), u64>,
     seen: HashSet<String>,
-    sessions: HashSet<String>,
+    sessions: HashMap<String, HashSet<String>>,
     first: Option<DateTime<Utc>>,
+    files: usize,
+    sources: Vec<SourceInfo>,
+}
+
+/// Model ids from routers look like "anthropic/claude-opus-5-5"; keep the last part.
+pub fn normalize_model(model: &str) -> String {
+    model.rsplit('/').next().unwrap_or(model).to_string()
 }
 
 impl Acc {
-    fn add_line(&mut self, raw: &str) {
-        let Ok(line) = serde_json::from_str::<Line>(raw) else {
-            return;
-        };
-        if line.kind.as_deref() != Some("assistant") {
-            return;
-        }
-        let (Some(msg), Some(ts)) = (line.message, line.timestamp) else {
-            return;
-        };
-        let Some(model) = msg.model.filter(|m| !m.starts_with('<')) else {
-            return;
-        }; // skip "<synthetic>"
-           // Claude Code writes one line per content block of the same reply: count it once.
-        if let Some(id) = &msg.id {
-            let key = format!("{id}:{}", line.request_id.as_deref().unwrap_or(""));
-            if !self.seen.insert(key) {
-                return;
-            }
-        }
-        if let Some(s) = line.session_id {
-            self.sessions.insert(s);
-        }
+    pub fn session(&mut self, source: &str, id: &str) {
+        self.sessions
+            .entry(source.to_string())
+            .or_default()
+            .insert(id.to_string());
+    }
+
+    /// Records `replies` replies at `ts`. `fallback_value` is used when our
+    /// price table doesn't know the model (e.g. Hermes' own cost estimate).
+    pub fn add(
+        &mut self,
+        source: &str,
+        ts: DateTime<Utc>,
+        model: &str,
+        replies: u64,
+        t: Tokens,
+        fallback_value: Option<f64>,
+    ) {
         self.first = Some(self.first.map_or(ts, |f| f.min(ts)));
         let local = ts.with_timezone(&Local);
         let date = local.date_naive();
-        *self.hours.entry((date, local.hour())).or_default() += 1;
-        let u = msg.usage.unwrap_or_default();
-        let value = pricing::cost(&model, u.tokens());
+        if replies > 0 {
+            *self
+                .hours
+                .entry((date, local.hour(), source.to_string()))
+                .or_default() += replies;
+        }
+        let model = normalize_model(model);
+        let value = pricing::cost(&model, t).or(fallback_value);
         let row = self
             .rows
-            .entry((date, model.clone()))
+            .entry((date, source.to_string(), model.clone()))
             .or_insert_with(|| DayModel {
                 date,
+                source: source.to_string(),
                 model,
                 replies: 0,
                 input_tokens: 0,
@@ -195,64 +224,119 @@ impl Acc {
             });
         match value {
             Some(v) => row.api_value += v,
-            None => row.unpriced_replies += 1,
+            None => row.unpriced_replies += replies,
         }
-        row.replies += 1;
-        row.input_tokens += u.input_tokens;
-        row.output_tokens += u.output_tokens;
-        row.cache_read_tokens += u.cache_read_input_tokens;
-        let t = u.tokens();
+        row.replies += replies;
+        row.input_tokens += t.input;
+        row.output_tokens += t.output;
+        row.cache_read_tokens += t.cache_read;
         row.cache_write_tokens += t.cache_write_5m + t.cache_write_1h;
     }
 
-    fn finish(self, files: usize, sources: Vec<String>) -> Analytics {
+    pub fn source(&mut self, id: &str, label: &str, location: String) {
+        let sessions = self.sessions.get(id).map_or(0, HashSet::len);
+        self.sources.push(SourceInfo {
+            id: id.into(),
+            label: label.into(),
+            location,
+            sessions,
+        });
+    }
+
+    fn add_claude_code_line(&mut self, raw: &str) {
+        let Ok(line) = serde_json::from_str::<Line>(raw) else {
+            return;
+        };
+        if line.kind.as_deref() != Some("assistant") {
+            return;
+        }
+        let (Some(msg), Some(ts)) = (line.message, line.timestamp) else {
+            return;
+        };
+        // Skip placeholder entries such as "<synthetic>".
+        let Some(model) = msg.model.filter(|m| !m.starts_with('<')) else {
+            return;
+        };
+        // Claude Code writes one line per content block of the same reply: count it once.
+        if let Some(id) = &msg.id {
+            let key = format!("{id}:{}", line.request_id.as_deref().unwrap_or(""));
+            if !self.seen.insert(key) {
+                return;
+            }
+        }
+        if let Some(s) = &line.session_id {
+            self.session("claude_code", s);
+        }
+        let t = msg.usage.unwrap_or_default().tokens();
+        self.add("claude_code", ts, &model, 1, t, None);
+    }
+
+    pub fn scan_claude_code(&mut self, dirs: &[PathBuf]) {
+        let mut files = Vec::new();
+        for d in dirs {
+            jsonl_files(d, &mut files);
+        }
+        for f in &files {
+            let Ok(file) = std::fs::File::open(f) else {
+                continue;
+            };
+            for line in BufReader::new(file).lines().map_while(Result::ok) {
+                self.add_claude_code_line(&line);
+            }
+        }
+        self.files += files.len();
+        if !files.is_empty() {
+            let location = dirs
+                .iter()
+                .map(|d| d.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.source("claude_code", "Claude Code", location);
+        }
+    }
+
+    pub fn finish(self, hermes_available: bool) -> Analytics {
         let mut days: Vec<DayModel> = self.rows.into_values().collect();
-        days.sort_by(|a, b| a.date.cmp(&b.date).then(a.model.cmp(&b.model)));
+        days.sort_by(|a, b| {
+            a.date
+                .cmp(&b.date)
+                .then(a.source.cmp(&b.source))
+                .then(a.model.cmp(&b.model))
+        });
         let mut hours: Vec<HourCount> = self
             .hours
             .into_iter()
-            .map(|((date, hour), replies)| HourCount {
+            .map(|((date, hour, source), replies)| HourCount {
                 date,
+                source,
                 weekday: date.weekday().num_days_from_monday(),
                 hour,
                 replies,
             })
             .collect();
-        hours.sort_by_key(|h| (h.date, h.hour));
+        hours.sort_by(|a, b| (a.date, a.hour, &a.source).cmp(&(b.date, b.hour, &b.source)));
         Analytics {
             days,
             hours,
             prices_as_of: pricing::PRICES_AS_OF.to_string(),
-            sessions: self.sessions.len(),
-            files_scanned: files,
+            sessions: self.sessions.values().map(HashSet::len).sum(),
+            files_scanned: self.files,
             first_seen: self.first,
-            sources,
+            sources: self.sources,
+            hermes_available,
         }
     }
 }
 
-pub fn scan_dirs(dirs: &[PathBuf]) -> Analytics {
-    let mut files = Vec::new();
-    for d in dirs {
-        jsonl_files(d, &mut files);
-    }
+/// Everything the Models tab needs. Hermes is read only when `include_hermes` is on.
+pub fn scan(include_hermes: bool) -> Analytics {
     let mut acc = Acc::default();
-    for f in &files {
-        let Ok(file) = std::fs::File::open(f) else {
-            continue;
-        };
-        for line in BufReader::new(file).lines().map_while(Result::ok) {
-            acc.add_line(&line);
-        }
+    acc.scan_claude_code(&log_dirs());
+    let dbs = crate::hermes::databases();
+    if include_hermes {
+        crate::hermes::scan(&dbs, &mut acc);
     }
-    acc.finish(
-        files.len(),
-        dirs.iter().map(|d| d.display().to_string()).collect(),
-    )
-}
-
-pub fn scan() -> Analytics {
-    scan_dirs(&log_dirs())
+    acc.finish(!include_hermes && !dbs.is_empty())
 }
 
 #[cfg(test)]
@@ -284,11 +368,15 @@ mod tests {
         )
         .unwrap();
 
-        let a = scan_dirs(std::slice::from_ref(&dir));
+        let mut acc = Acc::default();
+        acc.scan_claude_code(std::slice::from_ref(&dir));
+        let a = acc.finish(false);
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert_eq!(a.files_scanned, 2);
         assert_eq!(a.sessions, 1);
+        assert_eq!(a.sources.len(), 1);
+        assert_eq!(a.sources[0].id, "claude_code");
         let opus: Vec<_> = a
             .days
             .iter()
@@ -296,6 +384,7 @@ mod tests {
             .collect();
         assert_eq!(opus.iter().map(|d| d.replies).sum::<u64>(), 2);
         assert_eq!(opus.iter().map(|d| d.output_tokens).sum::<u64>(), 55);
+        assert!(opus.iter().all(|d| d.source == "claude_code"));
         assert_eq!(
             a.days
                 .iter()
@@ -309,5 +398,15 @@ mod tests {
         assert!((opus.iter().map(|d| d.api_value).sum::<f64>() - expected).abs() < 1e-12);
         assert_eq!(a.hours.iter().map(|h| h.replies).sum::<u64>(), 3);
         assert!(a.hours.iter().all(|h| h.weekday < 7 && h.hour < 24));
+    }
+
+    #[test]
+    fn router_prefixes_are_dropped() {
+        assert_eq!(
+            normalize_model("anthropic/claude-opus-5-5"),
+            "claude-opus-5-5"
+        );
+        assert_eq!(normalize_model("z-ai/glm-5.2"), "glm-5.2");
+        assert_eq!(normalize_model("claude-sonnet-5-5"), "claude-sonnet-5-5");
     }
 }

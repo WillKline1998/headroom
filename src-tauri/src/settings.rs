@@ -15,6 +15,8 @@ pub struct Settings {
     pub notify_at: Vec<u8>,
     /// What the macOS menu bar shows next to the icon: "both" | "session" | "weekly" | "none".
     pub tray_text: String,
+    /// Also count usage from Hermes Agent, when it's installed.
+    pub include_hermes: bool,
 }
 
 impl Default for Settings {
@@ -25,6 +27,7 @@ impl Default for Settings {
             notify: true,
             notify_at: vec![80, 95],
             tray_text: "both".into(),
+            include_hermes: true,
         }
     }
 }
