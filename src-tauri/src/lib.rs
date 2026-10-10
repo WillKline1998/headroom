@@ -158,6 +158,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // A second launch (e.g. double-clicking the app again) must not add a second tray icon;
+        // it just brings the existing widget forward. Registered first, as the plugin requires.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_widget(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(

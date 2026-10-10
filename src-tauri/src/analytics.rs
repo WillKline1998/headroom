@@ -146,16 +146,16 @@ pub fn log_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
+/// Recursively collects `*.jsonl` transcripts (subagent transcripts live in nested folders).
+/// `walkdir` follows symlinks but detects loops, and skips unreadable entries.
 fn jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for e in entries.flatten() {
-        let p = e.path();
-        if p.is_dir() {
-            jsonl_files(&p, out); // subagent transcripts live in nested folders
-        } else if p.extension().is_some_and(|x| x == "jsonl") {
-            out.push(p);
+    for e in walkdir::WalkDir::new(dir)
+        .follow_links(true)
+        .into_iter()
+        .flatten()
+    {
+        if e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "jsonl") {
+            out.push(e.into_path());
         }
     }
 }
@@ -342,6 +342,20 @@ pub fn scan(include_hermes: bool) -> Analytics {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn jsonl_scan_finds_nested_files_and_survives_symlink_loops() {
+        let dir = std::env::temp_dir().join(format!("headroom-walk-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("a/b")).unwrap();
+        std::fs::write(dir.join("a/b/x.jsonl"), "").unwrap();
+        std::fs::write(dir.join("a/ignore.txt"), "").unwrap();
+        std::os::unix::fs::symlink(&dir, dir.join("a/loop")).unwrap();
+        let mut out = Vec::new();
+        jsonl_files(&dir, &mut out);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(out.len(), 1);
+    }
 
     #[test]
     fn counts_replies_once_per_model_and_skips_noise() {
