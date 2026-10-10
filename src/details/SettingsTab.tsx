@@ -5,6 +5,7 @@ import { api, type Settings } from "../api";
 
 const INTERVALS = [60, 180, 300, 600, 900];
 const REPO = "https://github.com/WillKline1998/headroom";
+const CREDITS = `${REPO}/blob/main/THIRD_PARTY_LICENSES.md`;
 
 export function SettingsTab() {
   const [s, setS] = useState<Settings | null>(null);
@@ -98,6 +99,8 @@ export function SettingsTab() {
       </p>
       <p className="hint">
         Unofficial; not affiliated with Anthropic. <a href={REPO} onClick={(e) => { e.preventDefault(); openUrl(REPO); }}>Source on GitHub</a>
+        {" · "}
+        <a href={CREDITS} onClick={(e) => { e.preventDefault(); openUrl(CREDITS); }}>Open-source credits</a>
       </p>
     </section>
   );

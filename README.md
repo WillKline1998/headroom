@@ -77,6 +77,10 @@ src/
 
 The UI only knows about `Snapshot`s of `Limit`s, so another provider (e.g. OpenAI Codex) can be added by producing the same shape.
 
+## Credits & licenses
+
+Headroom is [MIT-licensed](LICENSE). It is built on open-source packages whose licenses are all permissive; their notices are collected in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md), which also ships inside every download. Regenerate it with `node scripts/credits.mjs` after changing dependencies, and check licenses with `cd src-tauri && cargo deny check licenses`.
+
 ## Roadmap
 
 - Sign in with a claude.ai session as an alternative to Claude Code
